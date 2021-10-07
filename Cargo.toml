@@ -1,0 +1,5 @@
+[workspace]
+members = [
+  "easy-xml",
+  "easy-xml-derive"
+]
