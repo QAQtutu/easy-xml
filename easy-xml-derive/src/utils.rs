@@ -157,7 +157,7 @@ impl TypeWapper {
 #[derive(Debug)]
 pub struct Attributes {
     pub flatten: bool,
-    pub val: bool,
+    pub text: bool,
     pub attribute: bool,
     pub prefix: Option<String>,
     pub rename: Option<String>, // pub namespaces: BTreeMap<String, String>,
@@ -166,10 +166,11 @@ pub struct Attributes {
 impl Attributes {
     pub fn new(attrs: &Vec<Attribute>) -> Self {
         let mut attribute = false;
-        let mut val = false;
+        let mut text = false;
         let mut flatten = false;
         let mut prefix = None;
         let mut rename = None;
+        
 
         for attr in attrs.iter().filter(|a| a.path.is_ident("easy_xml")) {
             let mut attr_iter = attr.clone().tokens.into_iter();
@@ -182,8 +183,8 @@ impl Attributes {
                                 "attribute" => {
                                     attribute = true;
                                 }
-                                "value" => {
-                                    val = true;
+                                "text" => {
+                                    text = true;
                                 }
                                 "flatten" => {
                                     flatten = true;
@@ -204,7 +205,7 @@ impl Attributes {
 
         Attributes {
             flatten,
-            val,
+            text,
             attribute,
             prefix,
             rename,

@@ -51,6 +51,27 @@ impl XmlDocument {
                         (&mut doc).as_mut().unwrap(),
                     );
                 }
+                XmlEvent::Comment(s) => {
+                    add_element_to_parent(
+                        XmlElement::Comment(s),
+                        &mut stack,
+                        (&mut doc).as_mut().unwrap(),
+                    );
+                }
+                XmlEvent::CData(s) => {
+                    add_element_to_parent(
+                        XmlElement::CData(s),
+                        &mut stack,
+                        (&mut doc).as_mut().unwrap(),
+                    );
+                }
+                XmlEvent::Whitespace(s) => {
+                    add_element_to_parent(
+                        XmlElement::Whitespace(s),
+                        &mut stack,
+                        (&mut doc).as_mut().unwrap(),
+                    );
+                }
                 _ => {}
             }
         }
@@ -75,13 +96,19 @@ fn add_element_to_parent(node: XmlElement, stack: &mut Vec<XmlElement>, doc: &mu
 }
 
 pub fn from_str<T: XmlDeserialize>(xml: &str) -> Result<T, Error> {
-    let doc = XmlDocument::from_str(xml).unwrap();
-    let i = doc.elements.get(0).unwrap();
-    return T::deserialize(i);
+    let doc = match XmlDocument::from_str(xml) {
+        Ok(doc) => doc,
+        Err(_) => return Err(Error::BadXml),
+    };
+    match doc.elements.get(0) {
+        Some(root) => T::deserialize(root),
+        None => return Err(Error::BadXml),
+    }
 }
 
 #[derive(Debug)]
 pub enum Error {
     XmlError(xml::reader::Error),
+    BadXml,
     Other(String),
 }

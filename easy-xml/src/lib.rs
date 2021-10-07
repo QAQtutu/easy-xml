@@ -14,7 +14,7 @@ pub struct XmlDocument {
 pub enum XmlElement {
     Text(String),
     Node(XmlNode),
-    Whitespace,
+    Whitespace(String),
     Comment(String),
     CData(String),
 }
@@ -50,7 +50,7 @@ impl XmlElement {
             XmlElement::Node(node) => {
                 node.text(string);
             }
-            XmlElement::Whitespace => {}
+            XmlElement::Whitespace(_) => {}
             XmlElement::Comment(_) => {}
             XmlElement::CData(_) => {}
         }
@@ -170,7 +170,7 @@ macro_rules! impl_de_for_number {
                 match str.parse::<$x>() {
                     Ok(val) => Ok(val),
                     Err(_) => {
-                        let msg = format!("\"{}\" can not convert to $!", str);
+                        let msg = format!("\"{}\" can not convert to number!", str);
 
                         Err(de::Error::Other(msg))
                     }

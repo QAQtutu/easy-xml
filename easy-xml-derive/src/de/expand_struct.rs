@@ -13,7 +13,14 @@ pub fn expand_derive_struct(
     let name = &ast.ident;
 
     for f in &data.fields {
-        TypeWapper::new(&f.ty).type_check();
+        let ty = TypeWapper::new(&f.ty);
+        ty.type_check();
+        if ty.has_vec() {
+            let attrs = Attributes::new(&f.attrs);
+            if attrs.text {
+                panic!("Vec 类型的字段不能使用text参数！Text parameter cannot be used for fields of VEC type!")
+            }
+        }
     }
 
     //变量声明
@@ -23,31 +30,12 @@ pub fn expand_derive_struct(
         .map(|field| var_declare_token(field))
         .collect();
 
-    // 从属性值捕获
-    let attribute_fields: TokenStream = data
-        .fields
-        .iter()
-        .filter(|x| {
-            let attrs = Attributes::new(&x.attrs);
-            return attrs.attribute && attrs.val == false;
-        })
-        .map(|x| {
-            return get_value_from_attribute_token(x);
-        })
-        .collect();
-
-    // 从节点捕获
-    let node_fields: TokenStream = data
-        .fields
-        .iter()
-        .filter(|x| {
-            let attrs = Attributes::new(&x.attrs);
-            return attrs.attribute == false && attrs.val == false;
-        })
-        .map(|x| {
-            return get_value_from_node_token(x);
-        })
-        .collect();
+    // 从节点捕获值
+    let node_fields = get_value_from_node_token((&data.fields).iter());
+    // 从属性捕获值
+    let attribute_fields = get_value_from_attribute_token((&data.fields).iter());
+    // 从文本捕获值
+    let text_fields = get_value_from_text_token((&data.fields).iter());
 
     //变量名重绑定
     let var_re_bind: TokenStream = data
@@ -63,8 +51,10 @@ pub fn expand_derive_struct(
         .iter()
         .map(|x| {
             let ident = x.ident.as_ref().unwrap();
+            let var_name =
+                TokenStream::from_str(format!("f_{}", ident.to_string()).as_str()).unwrap();
             return quote! {
-              #ident,
+              #ident:#var_name,
             };
         })
         .collect();
@@ -75,26 +65,18 @@ pub fn expand_derive_struct(
         where
             Self: Sized {
 
+            //属性变量定义
             #var_declare_token
+
+            //文本内容捕获
+            #text_fields
 
             match element {
               easy_xml::XmlElement::Node(node) => {
-                  for attr in &node.attributes {
-                    let name = &attr.name;
-                    #attribute_fields
-                  }
-                  for element in &node.elements {
-                    match element {
-                      easy_xml::XmlElement::Text(text) => {
-                          // Value
-                      }
-                      easy_xml::XmlElement::Node(node) => {
-                          let name = &node.name;
-                          #node_fields
-                      }
-                      _ => {}
-                    }
-                  }
+
+                  #attribute_fields
+
+                  #node_fields
               }
               easy_xml::XmlElement::Text(text) => {}
               _ => {}
@@ -117,7 +99,7 @@ pub fn expand_derive_struct(
 // Variable declare Token
 /// like  let a:Option<String> = None;
 pub fn var_declare_token(field: &Field) -> TokenStream {
-    let val_name = field.ident.as_ref().unwrap();
+    let var_name = field.ident.as_ref().unwrap();
     let ty = TypeWapper::new(&field.ty);
     let token = {
         if ty.has_vec() {
@@ -134,42 +116,118 @@ pub fn var_declare_token(field: &Field) -> TokenStream {
     let var_type = token.0;
     let var_value = token.1;
 
+    let var_name = TokenStream::from_str(format!("f_{}", var_name.to_string()).as_str()).unwrap();
+
     quote! {
-      let mut #val_name:#var_type =  #var_value ;
+      let mut #var_name:#var_type =  #var_value ;
     }
 }
 
 // 从节点中捕获变量
-pub fn get_value_from_node_token(field: &Field) -> TokenStream {
-    let val_name = field.ident.as_ref().unwrap();
+pub fn get_value_from_node_token(fields: syn::punctuated::Iter<Field>) -> TokenStream {
+    let mut count = 0;
+    let token: TokenStream = fields
+        .filter(|f| {
+            let attrs = Attributes::new(&f.attrs);
+            return attrs.attribute == false && attrs.text == false;
+        })
+        .map(|f| {
+            count += 1;
 
-    let attrs = Attributes::new(&field.attrs);
+            let var_name = f.ident.as_ref().unwrap();
+            let attrs = Attributes::new(&f.attrs);
+            let owned_name_match = owned_name_match(var_name, &attrs);
+            let var_instance = get_var_instance(f);
+            quote! {
+              if #owned_name_match {
+                #var_instance
+              }
+            }
+        })
+        .collect();
 
-    let owned_name_match = owned_name_match(val_name, &attrs);
-
-    let var_instance = get_var_instance(field);
-
-    quote! {
-      if #owned_name_match {
-        #var_instance
-      }
+    if count == 0 {
+        quote! {}
+    } else {
+        quote! {
+          for element in &node.elements {
+            match element {
+              easy_xml::XmlElement::Node(node) => {
+                  let name = &node.name;
+                  #token
+              }
+              _ => {}
+            }
+          }
+        }
     }
 }
 
 // 从属性值中捕获变量
-pub fn get_value_from_attribute_token(field: &Field) -> TokenStream {
-    let val_name = field.ident.as_ref().unwrap();
-    let attrs = Attributes::new(&field.attrs);
+pub fn get_value_from_attribute_token(fields: syn::punctuated::Iter<Field>) -> TokenStream {
+    let mut count = 0;
+    let token: TokenStream = fields
+        .filter(|f| {
+            let attrs = Attributes::new(&f.attrs);
+            return attrs.attribute == true && attrs.text == false;
+        })
+        .map(|f| {
+            count += 1;
 
-    let owned_name_match = owned_name_match(val_name, &attrs);
+            let var_name = f.ident.as_ref().unwrap();
+            let attrs = Attributes::new(&f.attrs);
+            let owned_name_match = owned_name_match(var_name, &attrs);
+            let var_instance = get_var_instance(&f);
+            quote! {
+              if #owned_name_match {
+                let element = easy_xml::XmlElement::Text(attr.value.clone());
 
-    let var_instance = get_var_instance(field);
-    quote! {
-      if #owned_name_match {
-        let element = easy_xml::XmlElement::Text(attr.value.clone());
+                #var_instance
+              }
+            }
+        })
+        .collect();
 
-        #var_instance
-      }
+    if count == 0 {
+        quote! {}
+    } else {
+        quote! {
+          for attr in &node.attributes {
+            let name = &attr.name;
+            #token
+          }
+        }
+    }
+}
+
+// 从文本中捕获变量
+pub fn get_value_from_text_token(fields: syn::punctuated::Iter<Field>) -> TokenStream {
+    let mut count = 0;
+    let token: TokenStream = fields
+        .filter(|f| {
+            let attrs = Attributes::new(&f.attrs);
+            return attrs.attribute == false && attrs.text == true;
+        })
+        .map(|f| {
+            count += 1;
+            let var_instance = get_var_instance(&f);
+            quote! {
+              #var_instance
+            }
+        })
+        .collect();
+
+    if count == 0 {
+        quote! {}
+    } else {
+        quote! {
+          {
+            let mut text = String::new();
+            element.text(&mut text);
+            let element = easy_xml::XmlElement::Text(text);
+            #token
+          }
+        }
     }
 }
 
@@ -185,46 +243,44 @@ pub fn get_var_instance(field: &Field) -> TokenStream {
             ty
         }
     };
-    let ty_token = (&ty.ty).into_token_stream();
-    let full_path = ty.full_path();
-    let token = TokenStream::from_str(full_path.as_str()).unwrap();
+    let token = TokenStream::from_str(ty.full_path().as_str()).unwrap();
 
-    let val_name = field.ident.as_ref().unwrap();
+    let var_name = field.ident.as_ref().unwrap();
+    let var_name = TokenStream::from_str(format!("f_{}", var_name.to_string()).as_str()).unwrap();
 
     if is_vec {
         return quote! {
-          let field___val : #ty_token =  #token::deserialize(&element)?;
-          #val_name.push(field___val);
+          // let field___val : #ty_token =  ;
+          #var_name.push(#token::deserialize(&element)?);
+        };
+    } else if ty.has_option() {
+        return quote! {
+          *#var_name = #token::deserialize(&element)?;
         };
     } else {
-        let instance = match ty.has_option() {
-            true => quote! {field___val},
-            false => quote! { Some(field___val)},
-        };
-
-        return quote! {
-          let field___val : #ty_token =  #token::deserialize(&element)?;
-          *#val_name =  #instance;
-        };
+        quote! {
+          *#var_name = Some(#token::deserialize(&element)?);
+        }
     }
 }
 
 pub fn var_re_bind(field: &Field) -> TokenStream {
     let tw = TypeWapper::new(&field.ty);
-    let val_name = field.ident.as_ref().unwrap();
+    let var_name = field.ident.as_ref().unwrap();
+    let var_name = TokenStream::from_str(format!("f_{}", var_name.to_string()).as_str()).unwrap();
 
     if tw.has_vec() {
         return quote! {};
     } else if tw.has_option() {
         return quote! {
-          let #val_name = *#val_name;
+          let #var_name = *#var_name;
         };
     }
 
-    let msg = format!("Field {} has no value!", val_name);
+    let msg = format!("Field {} has no value!", var_name);
 
     quote! {
-      let #val_name = match *#val_name{
+      let #var_name = match *#var_name{
         Some(val) =>val,
         None =>  return Err(easy_xml::de::Error::Other(#msg.to_string())),
       };

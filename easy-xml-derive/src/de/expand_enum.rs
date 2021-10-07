@@ -1,8 +1,11 @@
+use std::str::FromStr;
+
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 
 use crate::de::expand_struct::{
-    get_value_from_attribute_token, get_value_from_node_token, var_declare_token, var_re_bind,
+    get_value_from_attribute_token, get_value_from_node_token, get_value_from_text_token,
+    var_declare_token, var_re_bind,
 };
 use crate::utils::{owned_name_match, Attributes};
 
@@ -56,7 +59,7 @@ pub fn expand_derive_enum(
 
                   Err(de::Error::Other("".to_string()))
                 },
-                easy_xml::XmlElement::Whitespace => {return Err(de::Error::Other("".to_string()))},
+                easy_xml::XmlElement::Whitespace(_) => {return Err(de::Error::Other("".to_string()))},
                 easy_xml::XmlElement::Comment(_) => {return Err(de::Error::Other("".to_string()))},
                 easy_xml::XmlElement::CData(_) => {return Err(de::Error::Other("".to_string()))},
             }
@@ -111,29 +114,12 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
                         .map(|field| var_declare_token(field))
                         .collect();
 
-                    // 从属性值捕获
-                    let attribute_fields: TokenStream = (&named.named)
-                        .iter()
-                        .filter(|x| {
-                            let attrs = Attributes::new(&x.attrs);
-                            return attrs.attribute && attrs.val == false;
-                        })
-                        .map(|x| {
-                            return get_value_from_attribute_token(x);
-                        })
-                        .collect();
-
                     // 从节点捕获
-                    let node_fields: TokenStream = (&named.named)
-                        .iter()
-                        .filter(|x| {
-                            let attrs = Attributes::new(&x.attrs);
-                            return attrs.attribute == false && attrs.val == false;
-                        })
-                        .map(|x| {
-                            return get_value_from_node_token(x);
-                        })
-                        .collect();
+                    let node_fields = get_value_from_node_token((&named.named).iter());
+                    // 从属性值捕获
+                    let attribute_fields = get_value_from_attribute_token((&named.named).iter());
+                    // 从文本内容捕获
+                    let text_fields = get_value_from_text_token((&named.named).iter());
 
                     //变量名重绑定
                     let var_re_bind: TokenStream = (&named.named)
@@ -147,30 +133,24 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
                         .iter()
                         .map(|x| {
                             let ident = x.ident.as_ref().unwrap();
+                            let var_name =
+                                TokenStream::from_str(format!("f_{}", ident.to_string()).as_str())
+                                    .unwrap();
                             return quote! {
-                              #ident,
+                              #ident:#var_name,
                             };
                         })
                         .collect();
 
                     quote! {
                       #var_declare_token
-                      for attr in &node.attributes {
-                        let name = &attr.name;
-                        #attribute_fields
-                      }
-                      for element in &node.elements {
-                        match element {
-                          easy_xml::XmlElement::Text(_) => {
-                              // Value
-                          }
-                          easy_xml::XmlElement::Node(node) => {
-                              let name = &node.name;
-                              #node_fields
-                          }
-                          _ => {}
-                        }
-                      }
+
+                      #text_fields
+
+                      #attribute_fields
+
+                      #node_fields
+
                       #var_re_bind
 
                       return Ok( #enum_name::#ident {#vars});

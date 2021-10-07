@@ -131,7 +131,7 @@ impl XmlElement {
                 write_name(ctx, &node.name);
                 ctx.xml.push_str(">");
             }
-            XmlElement::Whitespace => {}
+            XmlElement::Whitespace(_) => {}
             XmlElement::Comment(_) => {}
             XmlElement::CData(_) => {}
         }
