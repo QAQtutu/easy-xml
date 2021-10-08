@@ -24,6 +24,7 @@
 
 
 ## 支持计划
+- Unnamed类型的Enum支持
 - enum 参数实现（用于为字段匹配多种xml节点名称）
 - root参数支持
 - namespace参数支持

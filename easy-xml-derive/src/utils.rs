@@ -170,7 +170,6 @@ impl Attributes {
         let mut flatten = false;
         let mut prefix = None;
         let mut rename = None;
-        
 
         for attr in attrs.iter().filter(|a| a.path.is_ident("easy_xml")) {
             let mut attr_iter = attr.clone().tokens.into_iter();
