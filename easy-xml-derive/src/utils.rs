@@ -160,7 +160,9 @@ pub struct Attributes {
     pub text: bool,
     pub attribute: bool,
     pub prefix: Option<String>,
-    pub rename: Option<String>, // pub namespaces: BTreeMap<String, String>,
+    pub rename: Option<String>,
+    // pub namespaces: BTreeMap<String, String>,
+    pub enums: bool,
 }
 
 impl Attributes {
@@ -170,6 +172,7 @@ impl Attributes {
         let mut flatten = false;
         let mut prefix = None;
         let mut rename = None;
+        let mut enums = false;
 
         for attr in attrs.iter().filter(|a| a.path.is_ident("easy_xml")) {
             let mut attr_iter = attr.clone().tokens.into_iter();
@@ -187,6 +190,9 @@ impl Attributes {
                                 }
                                 "flatten" => {
                                     flatten = true;
+                                }
+                                "enum" => {
+                                    enums = true;
                                 }
                                 "prefix" => {
                                     prefix = get_value(&mut attr_iter);
@@ -208,6 +214,7 @@ impl Attributes {
             attribute,
             prefix,
             rename,
+            enums,
         }
     }
 }
@@ -228,23 +235,32 @@ fn get_value(iter: &mut IntoIter) -> Option<String> {
 
 // OwnedName匹配
 pub fn owned_name_match(val_name: &Ident, attrs: &Attributes) -> TokenStream {
-    let tag = match &attrs.rename {
-        Some(_) => attrs.rename.as_ref().unwrap().clone(),
-        None => val_name.to_string(),
-    };
-
-    let prefix_match = match &attrs.prefix {
-        Some(prefix) => {
-            quote! {
-              && match &name.prefix {
-                Some(prefix) => prefix.as_str() == #prefix,
-                None => false,
-              }
+    let mut token = String::from("true ");
+    match &attrs.rename {
+        Some(rename) => {
+            if attrs.enums {
+                token.push_str("&& { true");
+                for i in rename.split("|") {
+                    token.push_str(format!("|| \"{}\" == &name.local_name ", i).as_str())
+                }
+                token.push_str(" }");
+            } else {
+                token.push_str(format!("&& \"{}\" == &name.local_name", rename).as_str())
             }
         }
-        None => quote! {},
+        None => token.push_str(format!("&& \"{}\" == &name.local_name ", val_name).as_str()),
+    }
+
+    match &attrs.prefix {
+        Some(prefix) => {
+            token.push_str(format!("{{ && match &name.prefix {{ Some(prefix) => prefix.as_str() == \"{}\", None => false, }}", prefix).as_str());
+        }
+        None => {}
     };
+
+    let token = <TokenStream as std::str::FromStr>::from_str(token.as_str()).unwrap();
+
     quote! {
-      #tag == &name.local_name #prefix_match
+      #token
     }
 }
