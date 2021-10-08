@@ -30,6 +30,7 @@ pub fn expand_derive_struct(
         .map(|field| var_declare_token(field))
         .collect();
 
+    let flatten_token = flatten_token((&data.fields).iter());
     // 从节点捕获值
     let node_fields = get_value_from_node_token((&data.fields).iter());
     // 从属性捕获值
@@ -67,6 +68,8 @@ pub fn expand_derive_struct(
 
             //属性变量定义
             #var_declare_token
+
+            #flatten_token
 
             //文本内容捕获
             #text_fields
@@ -120,6 +123,33 @@ pub fn var_declare_token(field: &Field) -> TokenStream {
 
     quote! {
       let mut #var_name:#var_type =  #var_value ;
+    }
+}
+
+pub fn flatten_token(fields: syn::punctuated::Iter<Field>) -> TokenStream {
+    let mut count = 0;
+    let token: TokenStream = fields
+        .filter(|f| {
+            let attrs = Attributes::new(&f.attrs);
+            return attrs.flatten == true;
+        })
+        .map(|f| {
+            count += 1;
+            let var_instance = get_var_instance(f);
+            quote! {
+              {
+                #var_instance
+              }
+            }
+        })
+        .collect();
+
+    if count == 0 {
+        quote! {}
+    } else {
+        quote! {
+          #token
+        }
     }
 }
 

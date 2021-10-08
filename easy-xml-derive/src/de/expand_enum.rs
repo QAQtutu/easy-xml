@@ -4,8 +4,8 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 
 use crate::de::expand_struct::{
-    get_value_from_attribute_token, get_value_from_node_token, get_value_from_text_token,
-    var_declare_token, var_re_bind,
+    flatten_token, get_value_from_attribute_token, get_value_from_node_token,
+    get_value_from_text_token, var_declare_token, var_re_bind,
 };
 use crate::utils::{owned_name_match, Attributes};
 
@@ -114,6 +114,7 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
                         .map(|field| var_declare_token(field))
                         .collect();
 
+                    let flatten_token = flatten_token((&named.named).iter());
                     // 从节点捕获
                     let node_fields = get_value_from_node_token((&named.named).iter());
                     // 从属性值捕获
@@ -146,6 +147,8 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
                       #var_declare_token
 
                       #text_fields
+
+                      #flatten_token
 
                       #attribute_fields
 
