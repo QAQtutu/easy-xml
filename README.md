@@ -21,11 +21,11 @@
 - **rename**：重命名xml节点名称，如果没有则节点名与结构体属性或者枚举值一致
 - **prefix**：重命名节点名称前缀
 - **flatten**：将当前节点传递给字段，即将字段属性展平
+- **enum**：匹配多个节点名称，需搭配rename使用，例如`#[easy_xml(rename = "Text|Img", enum)]`
 
 
 ## 支持计划
 - Unnamed类型的Enum支持
-- enum 参数实现（用于为字段匹配多种xml节点名称）
 - root参数支持
 - namespace参数支持
 - 序列化宏实现
