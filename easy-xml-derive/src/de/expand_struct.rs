@@ -12,16 +12,8 @@ pub fn expand_derive_struct(
 ) -> Result<TokenStream, String> {
     let name = &ast.ident;
 
-    for f in &data.fields {
-        let ty = TypeWapper::new(&f.ty);
-        ty.type_check();
-        if ty.has_vec() {
-            let attrs = Attributes::new(&f.attrs);
-            if attrs.text {
-                panic!("Vec 类型的字段不能使用text参数！Text parameter cannot be used for fields of VEC type!")
-            }
-        }
-    }
+    //字段检查
+    fields_check((&data.fields).into_iter());
 
     //变量声明
     let var_declare_token: TokenStream = data
@@ -30,6 +22,7 @@ pub fn expand_derive_struct(
         .map(|field| var_declare_token(field))
         .collect();
 
+    let flatten_token = flatten_token((&data.fields).iter());
     // 从节点捕获值
     let node_fields = get_value_from_node_token((&data.fields).iter());
     // 从属性捕获值
@@ -67,6 +60,8 @@ pub fn expand_derive_struct(
 
             //属性变量定义
             #var_declare_token
+
+            #flatten_token
 
             //文本内容捕获
             #text_fields
@@ -123,13 +118,40 @@ pub fn var_declare_token(field: &Field) -> TokenStream {
     }
 }
 
+pub fn flatten_token(fields: syn::punctuated::Iter<Field>) -> TokenStream {
+    let mut count = 0;
+    let token: TokenStream = fields
+        .filter(|f| {
+            let attrs = Attributes::new(&f.attrs);
+            return attrs.flatten == true;
+        })
+        .map(|f| {
+            count += 1;
+            let var_instance = get_var_instance(f);
+            quote! {
+              {
+                #var_instance
+              }
+            }
+        })
+        .collect();
+
+    if count == 0 {
+        quote! {}
+    } else {
+        quote! {
+          #token
+        }
+    }
+}
+
 // 从节点中捕获变量
 pub fn get_value_from_node_token(fields: syn::punctuated::Iter<Field>) -> TokenStream {
     let mut count = 0;
     let token: TokenStream = fields
         .filter(|f| {
             let attrs = Attributes::new(&f.attrs);
-            return attrs.attribute == false && attrs.text == false;
+            return attrs.attribute == false && attrs.text == false && attrs.flatten == false;
         })
         .map(|f| {
             count += 1;
@@ -169,7 +191,7 @@ pub fn get_value_from_attribute_token(fields: syn::punctuated::Iter<Field>) -> T
     let token: TokenStream = fields
         .filter(|f| {
             let attrs = Attributes::new(&f.attrs);
-            return attrs.attribute == true && attrs.text == false;
+            return attrs.attribute == true;
         })
         .map(|f| {
             count += 1;
@@ -284,5 +306,36 @@ pub fn var_re_bind(field: &Field) -> TokenStream {
         Some(val) =>val,
         None =>  return Err(easy_xml::de::Error::Other(#msg.to_string())),
       };
+    }
+}
+
+pub fn fields_check(fields: syn::punctuated::Iter<Field>) {
+    for f in fields {
+        let ty = TypeWapper::new(&f.ty);
+        //Field type check
+        ty.type_check();
+
+        //Vec and text are mutually exclusive
+        if ty.has_vec() {
+            let attrs = Attributes::new(&f.attrs);
+            if attrs.text {
+                panic!("Vec and text are mutually exclusive!")
+            }
+        }
+
+        let mut count = 0;
+        let attrs = Attributes::new(&f.attrs);
+        if attrs.text {
+            count += 1;
+        }
+        if attrs.attribute {
+            count += 1;
+        }
+        if attrs.flatten {
+            count += 1;
+        }
+        if count > 1 {
+            panic!("text, attribute and flatten are mutually exclusive!")
+        }
     }
 }

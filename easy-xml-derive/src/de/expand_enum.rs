@@ -4,8 +4,8 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 
 use crate::de::expand_struct::{
-    get_value_from_attribute_token, get_value_from_node_token, get_value_from_text_token,
-    var_declare_token, var_re_bind,
+    fields_check, flatten_token, get_value_from_attribute_token, get_value_from_node_token,
+    get_value_from_text_token, var_declare_token, var_re_bind,
 };
 use crate::utils::{owned_name_match, Attributes};
 
@@ -18,7 +18,7 @@ pub fn expand_derive_enum(
     for v in &data.variants {
         match &v.fields {
             syn::Fields::Named(named) => {
-                println!("Named");
+                // println!("Named");
                 for _f in &named.named {
                     // println!("{:?}", f.ident);
                 }
@@ -108,12 +108,15 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
 
             let enum_instance = match &v.fields {
                 syn::Fields::Named(named) => {
+                    fields_check((&named.named).iter());
+
                     //变量声明
                     let var_declare_token: TokenStream = (&named.named)
                         .iter()
                         .map(|field| var_declare_token(field))
                         .collect();
 
+                    let flatten_token = flatten_token((&named.named).iter());
                     // 从节点捕获
                     let node_fields = get_value_from_node_token((&named.named).iter());
                     // 从属性值捕获
@@ -146,6 +149,8 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
                       #var_declare_token
 
                       #text_fields
+
+                      #flatten_token
 
                       #attribute_fields
 

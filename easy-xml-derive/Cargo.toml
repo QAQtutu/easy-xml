@@ -2,14 +2,20 @@
 name = "easy-xml-derive"
 version = "0.1.0"
 authors = ["qaqtutu <203524203@qq.com>"]
+keywords = ["XML"]
+description = "The macros for easy-xml"
+license = "MIT"
+repository = "https://github.com/QAQtutu/easy-xml"
+homepage = "https://github.com/QAQtutu/easy-xml"
+readme = "../README.md"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn = "1.0"
-quote = "1.0"
-proc-macro2 = "1.0.7"
+syn = "~1.0"
+quote = "~1.0"
+proc-macro2 = "~1.0"
  
 [lib]
 proc_macro = true
