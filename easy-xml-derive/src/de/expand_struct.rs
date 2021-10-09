@@ -272,7 +272,6 @@ pub fn get_var_instance(field: &Field) -> TokenStream {
 
     if is_vec {
         return quote! {
-          // let field___val : #ty_token =  ;
           #var_name.push(#token::deserialize(&element)?);
         };
     } else if ty.has_option() {

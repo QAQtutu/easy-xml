@@ -112,3 +112,13 @@ pub enum Error {
     BadXml,
     Other(String),
 }
+
+#[inline(always)]
+pub fn unwrap_option<T>(op: Option<T>) -> Result<T, Error> {
+    match op {
+        Some(val) => return Ok(val),
+        None => {
+            return Err(Error::Other("Failed to get value!".to_string()));
+        }
+    }
+}
