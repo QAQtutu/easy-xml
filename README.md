@@ -25,7 +25,6 @@
 
 
 ## 支持计划
-- Unnamed类型的Enum支持
 - root参数支持
 - namespace参数支持
 - 序列化宏实现
@@ -34,8 +33,7 @@
 ## 使用限制
 - 结构体属性中Vec与Option不能同时出现，且只能出现在第一层级,且不能多层嵌套。如 `Vec<String>` 和`Option<String>`合法，`Option<Vec<String>>` 是不合法的。
 - 如果字段是Vec类型则不能使用text参数，因为节点内容只有一个唯一值。
-- 字段不支持带泛型的结构体，需要给某个具体的类型手动实现`easy_xml::XmlDeserialize`。
-
+- 参数attribute、text和flatten不能同时使用。
 
 ## 简易示例
 
