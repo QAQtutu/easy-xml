@@ -1,5 +1,10 @@
 extern crate easy_xml_derive;
 
+use std::{
+    cell::RefCell,
+    rc::{Rc, Weak},
+};
+
 use xml::{attribute::OwnedAttribute, common::XmlVersion, name::OwnedName, namespace::Namespace};
 
 #[derive(Debug)]
@@ -13,17 +18,19 @@ pub struct XmlDocument {
 #[derive(Debug)]
 pub enum XmlElement {
     Text(String),
-    Node(XmlNode),
+    Node(Rc<RefCell<XmlNode>>),
     Whitespace(String),
     Comment(String),
     CData(String),
 }
+
 #[derive(Debug)]
 pub struct XmlNode {
     pub name: OwnedName,
     pub attributes: Vec<OwnedAttribute>,
     pub namespace: Namespace,
     pub elements: Vec<XmlElement>,
+    pub parent: Option<Weak<RefCell<XmlNode>>>,
 }
 
 pub trait XmlDeserialize {
@@ -48,6 +55,7 @@ impl XmlElement {
         match self {
             XmlElement::Text(text) => string.push_str(text.as_str()),
             XmlElement::Node(node) => {
+                let node = node.as_ref().borrow();
                 node.text(string);
             }
             XmlElement::Whitespace(_) => {}

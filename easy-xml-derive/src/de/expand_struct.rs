@@ -53,6 +53,7 @@ pub fn expand_derive_struct(
 
             match element {
               easy_xml::XmlElement::Node(node) => {
+                  let node= &*node.borrow();
 
                   #code_for_attribute
 

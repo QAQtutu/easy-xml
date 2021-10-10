@@ -79,7 +79,7 @@ fn write_children(ctx: &mut SerializeContext, elements: &Vec<XmlElement>) {
     ctx.only_one_child = elements.len() == 1;
 
     let only_text_child = ctx.only_one_child && {
-        match &elements.get(0).unwrap() {
+        match elements.get(0).unwrap() {
             XmlElement::Text(_) => true,
             _ => false,
         }
@@ -114,6 +114,7 @@ impl XmlElement {
                 ctx.xml.push_str(str.trim());
             }
             XmlElement::Node(node) => {
+                let node = node.borrow_mut();
                 write_line_break(ctx);
                 write_indent(ctx);
 

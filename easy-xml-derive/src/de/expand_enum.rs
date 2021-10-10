@@ -27,6 +27,7 @@ pub fn expand_derive_enum(
                     _ => return Err(easy_xml::de::Error::Other("".to_string())),
                 },
                 easy_xml::XmlElement::Node(node) => {
+                  let node = &*node.borrow();
                   let name = &node.name;
 
                   #get_from_node

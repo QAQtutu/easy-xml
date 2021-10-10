@@ -509,6 +509,7 @@ pub fn build_code_for_children(fields: &Vec<Field>) -> TokenStream {
           for element in &node.elements {
             match element {
               easy_xml::XmlElement::Node(node) => {
+                  let node = &*node.borrow();
                   let name = &node.name;
                   #code
               }
