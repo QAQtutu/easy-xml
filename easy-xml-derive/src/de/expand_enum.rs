@@ -1,14 +1,7 @@
-use std::str::FromStr;
-
 use proc_macro2::{Ident, TokenStream};
-use quote::{quote, ToTokens};
-use syn::FieldsUnnamed;
+use quote::quote;
 
-use crate::de::expand_struct::{
-    fields_check, flatten_token, get_value_from_attribute_token, get_value_from_node_token,
-    get_value_from_text_token, var_declare_token, var_re_bind,
-};
-use crate::utils;
+use crate::utils::{self, Field};
 use crate::utils::{owned_name_match, Attributes};
 
 pub fn expand_derive_enum(
@@ -88,69 +81,39 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
 
             let enum_instance = match &v.fields {
                 syn::Fields::Named(named) => {
-                    fields_check((&named.named).iter());
+                    let fields = (&named.named)
+                        .into_iter()
+                        .map(|f| {
+                            let f = utils::Field::from_named(f);
 
-                    //变量声明
-                    let var_declare_token: TokenStream = (&named.named)
-                        .iter()
-                        .map(|field| var_declare_token(field))
-                        .collect();
-
-                    let flatten_token = flatten_token((&named.named).iter());
-                    // 从节点捕获
-                    let node_fields = get_value_from_node_token((&named.named).iter());
-                    // 从属性值捕获
-                    let attribute_fields = get_value_from_attribute_token((&named.named).iter());
-                    // 从文本内容捕获
-                    let text_fields = get_value_from_text_token((&named.named).iter());
-
-                    //变量名重绑定
-                    let var_re_bind: TokenStream = (&named.named)
-                        .iter()
-                        .map(|x| {
-                            return var_re_bind(x);
+                            return f;
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
-                    let vars: TokenStream = (&named.named)
-                        .iter()
-                        .map(|x| {
-                            let ident = x.ident.as_ref().unwrap();
-                            let var_name =
-                                TokenStream::from_str(format!("f_{}", ident.to_string()).as_str())
-                                    .unwrap();
-                            return quote! {
-                              #ident:#var_name,
-                            };
-                        })
-                        .collect();
-
-                    quote! {
-                      #var_declare_token
-
-                      #text_fields
-
-                      #flatten_token
-
-                      #attribute_fields
-
-                      #node_fields
-
-                      #var_re_bind
-
-                      return Ok( #enum_name::#ident {#vars});
+                    for f in &fields {
+                        f.check()
                     }
+
+                    code_for_named_and_unnamed(true, enum_name, ident, fields)
                 }
 
                 syn::Fields::Unnamed(unnamed) => {
-                    let field = unnamed.unnamed.first().unwrap();
-                    let _ty_token = (&field.ty).into_token_stream();
-                    // quote! {
+                    let mut index = 1;
 
-                    //  return Ok( #enum_name::#ident (#ty_token::deserialize(element)?));
-                    // }
+                    let fields = (&unnamed.unnamed)
+                        .into_iter()
+                        .map(|f| {
+                            let f = utils::Field::from_unnamed(f, index);
+                            index += 1;
+                            return f;
+                        })
+                        .collect::<Vec<_>>();
 
-                    unnamed_impl(enum_name, ident, unnamed)
+                    for f in &fields {
+                        f.check()
+                    }
+
+                    code_for_named_and_unnamed(false, enum_name, ident, fields)
                 }
                 syn::Fields::Unit => {
                     quote! {
@@ -172,19 +135,12 @@ fn get_from_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
     };
 }
 
-fn unnamed_impl(enum_name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed) -> TokenStream {
-    // 从节点捕获
-
-    let mut index = 1;
-    let fields = (&fields.unnamed)
-        .into_iter()
-        .map(|f| {
-            let f = utils::Field::from_unnamed(f, index);
-            index += 1;
-            return f;
-        })
-        .collect::<Vec<_>>();
-
+fn code_for_named_and_unnamed(
+    is_struct: bool,
+    enum_name: &Ident,
+    variant_name: &Ident,
+    fields: Vec<Field>,
+) -> TokenStream {
     // let mut f_0: Box<Option<String>> = Box::new(None);
     // let mut f_1: Vec<String> = Vec::new();
     let code_for_declare = utils::build_code_for_declare(&fields);
@@ -213,7 +169,21 @@ fn unnamed_impl(enum_name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed)
     let code_for_children = utils::build_code_for_children(&fields);
 
     let var_rebind = utils::var_rebind(&fields);
+
     let var_collect = utils::var_collect(&fields);
+
+    let var_collect = match is_struct {
+        true => quote! {
+          return Ok(
+            #enum_name :: #variant_name{#var_collect}
+          );
+        },
+        false => quote! {
+          return Ok(
+            #enum_name :: #variant_name(#var_collect)
+          );
+        },
+    };
 
     quote! {
       #code_for_declare
@@ -228,10 +198,6 @@ fn unnamed_impl(enum_name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed)
 
       #var_rebind
 
-      return Ok(
-        #enum_name :: #variant_name(#var_collect)
-      );
-
-      // return Err(easy_xml::de::Error::Other("".to_string()))
+      #var_collect
     }
 }

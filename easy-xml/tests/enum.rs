@@ -3,7 +3,6 @@ extern crate easy_xml_derive;
 
 #[test]
 fn test() {
-    // struct
     {
         #[derive(Debug, XmlDeserialize)]
         struct Content {
@@ -37,6 +36,7 @@ fn test() {
             },
             Unit,
         }
+
         let xml = r#"
           <Content>
             <Unnamed attr="value">

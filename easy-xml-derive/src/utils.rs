@@ -3,6 +3,7 @@ use std::str::FromStr;
 use proc_macro2::{token_stream::IntoIter, Delimiter, Ident, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{Attribute, Type};
+
 pub struct TypeWapper {
     pub ty: Type,
 }
@@ -274,7 +275,7 @@ pub struct Field<'a> {
     index: i32,
 }
 impl<'a> Field<'a> {
-    pub fn _from_named(field: &'a syn::Field) -> Self {
+    pub fn from_named(field: &'a syn::Field) -> Self {
         Field {
             field,
             index: -1,
@@ -290,6 +291,34 @@ impl<'a> Field<'a> {
             ty: TypeWapper::new(&field.ty),
         }
     }
+
+    pub fn check(&self) {
+        self.ty.type_check();
+
+        let attrs = &self.attrs;
+
+        if self.ty.has_vec() {
+            if attrs.text {
+                panic!("Vec and text are mutually exclusive!")
+            }
+        }
+
+        let mut count = 0;
+
+        if attrs.text {
+            count += 1;
+        }
+        if attrs.attribute {
+            count += 1;
+        }
+        if attrs.flatten {
+            count += 1;
+        }
+        if count > 1 {
+            panic!("text, attribute and flatten are mutually exclusive!")
+        }
+    }
+
     pub fn var_name(&self) -> TokenStream {
         match self.field.ident.as_ref() {
             Some(i) => TokenStream::from_str(format!("f_{}", i.to_string()).as_str()).unwrap(),
@@ -394,6 +423,7 @@ impl<'a> Field<'a> {
 pub fn build_code_for_declare(fields: &Vec<Field>) -> TokenStream {
     fields.into_iter().map(|f| f.var_declare()).collect()
 }
+
 pub fn build_code_for_text(fields: &Vec<Field>) -> TokenStream {
     let text_code: TokenStream = (&fields)
         .into_iter()
