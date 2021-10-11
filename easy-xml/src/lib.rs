@@ -1,6 +1,7 @@
 extern crate easy_xml_derive;
 
 use std::{
+    borrow::Borrow,
     cell::RefCell,
     rc::{Rc, Weak},
 };
@@ -87,11 +88,11 @@ impl<T: XmlDeserialize> XmlDeserialize for Option<T>
 where
     T: Sized,
 {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
-        match T::deserialize(node) {
+        match T::deserialize(element) {
             Ok(obj) => Ok(Some(obj)),
             Err(e) => Err(e),
         }
@@ -102,11 +103,11 @@ impl<T: XmlDeserialize> XmlDeserialize for Box<T>
 where
     T: Sized,
 {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
-        match T::deserialize(node) {
+        match T::deserialize(element) {
             Ok(obj) => Ok(Box::new(obj)),
             Err(e) => Err(e),
         }
@@ -117,11 +118,11 @@ impl<T: XmlDeserialize> XmlDeserialize for std::rc::Rc<T>
 where
     T: Sized,
 {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
-        match T::deserialize(node) {
+        match T::deserialize(element) {
             Ok(obj) => Ok(std::rc::Rc::new(obj)),
             Err(e) => Err(e),
         }
@@ -132,11 +133,11 @@ impl<T: XmlDeserialize> XmlDeserialize for std::sync::Arc<T>
 where
     T: Sized,
 {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
-        match T::deserialize(node) {
+        match T::deserialize(element) {
             Ok(obj) => Ok(std::sync::Arc::new(obj)),
             Err(e) => Err(e),
         }
@@ -147,11 +148,11 @@ impl<T: XmlDeserialize> XmlDeserialize for std::cell::Cell<T>
 where
     T: Sized,
 {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
-        match T::deserialize(node) {
+        match T::deserialize(element) {
             Ok(obj) => Ok(std::cell::Cell::new(obj)),
             Err(e) => Err(e),
         }
@@ -162,11 +163,11 @@ impl<T: XmlDeserialize> XmlDeserialize for std::cell::RefCell<T>
 where
     T: Sized,
 {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
-        match T::deserialize(node) {
+        match T::deserialize(element) {
             Ok(obj) => Ok(std::cell::RefCell::new(obj)),
             Err(e) => Err(e),
         }
@@ -174,12 +175,12 @@ where
 }
 
 impl XmlDeserialize for String {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized,
     {
         let mut text = String::new();
-        node.text(&mut text);
+        element.text(&mut text);
         Ok(text)
     }
 }
@@ -187,11 +188,11 @@ impl XmlDeserialize for String {
 macro_rules! impl_de_for_number {
     ($x:ty) => {
         impl XmlDeserialize for $x {
-            fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+            fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
             where
                 Self: Sized,
             {
-                let str = String::deserialize(node)?;
+                let str = String::deserialize(element)?;
                 let str = str.trim();
                 match str.parse::<$x>() {
                     Ok(val) => Ok(val),
@@ -247,27 +248,70 @@ impl XmlSerialize for String {
 }
 
 impl<T: XmlSerialize> XmlSerialize for Option<T> {
-    fn serialize(&self, node: &mut XmlElement)
+    fn serialize(&self, element: &mut XmlElement)
     where
         Self: Sized,
     {
         match self {
             Some(t) => {
-                t.serialize(node);
+                t.serialize(element);
             }
             None => {}
         }
     }
 }
 
+impl<T: XmlSerialize> XmlSerialize for Box<T> {
+    fn serialize(&self, element: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        self.as_ref().serialize(element);
+    }
+}
+impl<T: XmlSerialize> XmlSerialize for Rc<T> {
+    fn serialize(&self, element: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        self.as_ref().serialize(element);
+    }
+}
+impl<T: XmlSerialize> XmlSerialize for std::sync::Arc<T> {
+    fn serialize(&self, element: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        self.as_ref().serialize(element);
+    }
+}
+
+impl<T: XmlSerialize> XmlSerialize for std::cell::Cell<T> {
+    fn serialize(&self, element: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        self.borrow().serialize(element);
+    }
+}
+
+impl<T: XmlSerialize> XmlSerialize for std::cell::RefCell<T> {
+    fn serialize(&self, element: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        self.borrow().serialize(element);
+    }
+}
+
 macro_rules! impl_se_for_number {
     ($x:ty) => {
         impl XmlSerialize for $x {
-            fn serialize(&self, node: &mut XmlElement)
+            fn serialize(&self, element: &mut XmlElement)
             where
                 Self: Sized,
             {
-                match node {
+                match element {
                     XmlElement::Text(text) => {
                         text.push_str(self.to_string().as_str());
                     }
