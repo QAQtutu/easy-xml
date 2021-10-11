@@ -1,6 +1,8 @@
+use std::{cell::RefCell, rc::Rc};
+
 use xml::{attribute::OwnedAttribute, name::OwnedName, namespace::Namespace};
 
-use crate::{XmlDocument, XmlElement};
+use crate::{XmlDocument, XmlElement, XmlNode, XmlSerialize};
 
 pub struct SerializeSettings {
     pub indent: u32,
@@ -177,4 +179,21 @@ impl XmlDocument {
         }
         return ctx.xml;
     }
+}
+
+pub fn to_string<T: XmlSerialize>(t: &T) -> String {
+    let root = Rc::new(RefCell::new(XmlNode::empty()));
+    let mut root = XmlElement::Node(root);
+    t.serialize(&mut root);
+
+    let mut doc = XmlDocument {
+        version: xml::common::XmlVersion::Version10,
+        encoding: "UTF-8".to_string(),
+        standalone: None,
+        elements: Vec::new(),
+    };
+
+    doc.elements.push(root);
+
+    return doc.serialize();
 }

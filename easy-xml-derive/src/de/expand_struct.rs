@@ -12,7 +12,7 @@ pub fn expand_derive_struct(
     let fields = (&data.fields)
         .into_iter()
         .map(|f| {
-            let f = utils::Field::from_named(f);
+            let f = utils::Field::from_struct(f);
             return f;
         })
         .collect::<Vec<_>>();
@@ -22,20 +22,20 @@ pub fn expand_derive_struct(
     }
 
     // //变量声明
-    let code_for_declare = utils::build_code_for_declare(&fields);
+    let code_for_declare = utils::de_build_code_for_declare(&fields);
 
-    let code_for_flatten = utils::build_code_for_flatten(&fields);
+    let code_for_flatten = utils::de_build_code_for_flatten(&fields);
 
     // 从文本捕获值
-    let code_for_text = utils::build_code_for_text(&fields);
+    let code_for_text = utils::de_build_code_for_text(&fields);
 
-    let code_for_attribute = utils::build_code_for_attribute(&fields);
+    let code_for_attribute = utils::de_build_code_for_attribute(&fields);
 
-    let code_for_children = utils::build_code_for_children(&fields);
+    let code_for_children = utils::de_build_code_for_children(&fields);
 
-    let var_rebind = utils::var_rebind(&fields);
+    let var_rebind = utils::de_var_rebind(&fields);
 
-    let var_collect = utils::var_collect(&fields);
+    let var_collect = utils::de_var_collect(&fields);
 
     Ok(quote! {
       impl easy_xml::XmlDeserialize for #name{

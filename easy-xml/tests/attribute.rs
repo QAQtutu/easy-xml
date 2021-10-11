@@ -1,12 +1,13 @@
 #[macro_use]
 extern crate easy_xml_derive;
-use easy_xml::de;
+use easy_xml::{de, se};
 
 #[test]
 fn test() {
     // struct
     {
-        #[derive(Debug, XmlDeserialize)]
+        #[derive(Debug, XmlDeserialize, XmlSerialize)]
+        #[easy_xml(root)]
         struct Node {
             #[easy_xml(attribute)]
             attr1: String,
@@ -16,6 +17,9 @@ fn test() {
         let node: Node = de::from_str("<Node attr1=\"value1\" attr2=\"value2\"></Node>").unwrap();
         assert_eq!(node.attr1.as_str(), "value1");
         assert_eq!(node.attr2.as_str(), "value2");
+
+        let xml = se::to_string(&node);
+        println!("{}", xml);
     }
     //enum
 

@@ -144,19 +144,19 @@ fn code_for_named_and_unnamed(
 ) -> TokenStream {
     // let mut f_0: Box<Option<String>> = Box::new(None);
     // let mut f_1: Vec<String> = Vec::new();
-    let code_for_declare = utils::build_code_for_declare(&fields);
+    let code_for_declare = utils::de_build_code_for_declare(&fields);
 
     // {
     //     *f_1 = Some(String::deserialize(&element)?);
     // }
-    let code_for_flatten = utils::build_code_for_flatten(&fields);
+    let code_for_flatten = utils::de_build_code_for_flatten(&fields);
     //   {
     //     let mut text = String::new();
     //     element.text(&mut text);
     //     let element = easy_xml::XmlElement::Text(text);
     //     *f_0 = Some(String::deserialize(&element)?);
     //   }
-    let code_for_text = utils::build_code_for_text(&fields);
+    let code_for_text = utils::de_build_code_for_text(&fields);
 
     // for attr in &node.attributes {
     //     let name = &attr.name;
@@ -165,13 +165,13 @@ fn code_for_named_and_unnamed(
     //         *f_5 = Some(String::deserialize(&element)?);
     //     }
     // }
-    let code_for_attribute = utils::build_code_for_attribute(&fields);
+    let code_for_attribute = utils::de_build_code_for_attribute(&fields);
 
-    let code_for_children = utils::build_code_for_children(&fields);
+    let code_for_children = utils::de_build_code_for_children(&fields);
 
-    let var_rebind = utils::var_rebind(&fields);
+    let var_rebind = utils::de_var_rebind(&fields);
 
-    let var_collect = utils::var_collect(&fields);
+    let var_collect = utils::de_var_collect(&fields);
 
     let var_collect = match is_struct {
         true => quote! {

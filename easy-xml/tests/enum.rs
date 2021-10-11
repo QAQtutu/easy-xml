@@ -78,4 +78,16 @@ fn test() {
             }
         }
     }
+
+    {
+        #[derive(Debug, XmlDeserialize)]
+        enum Test {
+            #[easy_xml(prefix = "ofd")]
+            T1,
+            #[easy_xml(prefix = "ofd")]
+            T2,
+            #[easy_xml(prefix = "ofd")]
+            T3,
+        }
+    }
 }

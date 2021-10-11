@@ -7,7 +7,7 @@ use std::{
 
 use xml::{attribute::OwnedAttribute, common::XmlVersion, name::OwnedName, namespace::Namespace};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct XmlDocument {
     pub version: XmlVersion,
     pub encoding: String,
@@ -15,7 +15,7 @@ pub struct XmlDocument {
     pub elements: Vec<XmlElement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum XmlElement {
     Text(String),
     Node(Rc<RefCell<XmlNode>>),
@@ -34,11 +34,15 @@ pub struct XmlNode {
 }
 
 pub trait XmlDeserialize {
-    fn deserialize(node: &XmlElement) -> Result<Self, de::Error>
+    fn deserialize(element: &XmlElement) -> Result<Self, de::Error>
     where
         Self: Sized;
 }
-pub trait XmlSerialize {}
+pub trait XmlSerialize {
+    fn serialize(&self, element: &mut XmlElement)
+    where
+        Self: Sized;
+}
 
 pub mod de;
 pub mod se;
@@ -47,6 +51,20 @@ impl XmlNode {
     pub fn text(&self, string: &mut String) {
         for e in &self.elements {
             e.text(string);
+        }
+    }
+
+    pub fn empty() -> Self {
+        XmlNode {
+            name: OwnedName {
+                local_name: String::new(),
+                namespace: None,
+                prefix: None,
+            },
+            attributes: Vec::new(),
+            namespace: Namespace::empty(),
+            elements: Vec::new(),
+            parent: None,
         }
     }
 }
@@ -205,3 +223,39 @@ impl_de_for_number!(i128);
 
 impl_de_for_number!(f32);
 impl_de_for_number!(f64);
+
+// --------------------------------------------------------------------------------------------------------------------
+
+impl XmlSerialize for String {
+    fn serialize(&self, node: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        match node {
+            XmlElement::Text(text) => {
+                text.push_str(self.as_str());
+            }
+            XmlElement::Node(node) => {
+                node.as_ref()
+                    .borrow_mut()
+                    .elements
+                    .push(XmlElement::Text(self.clone()));
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<T: XmlSerialize> XmlSerialize for Option<T> {
+    fn serialize(&self, node: &mut XmlElement)
+    where
+        Self: Sized,
+    {
+        match self {
+            Some(t) => {
+                t.serialize(node);
+            }
+            None => {}
+        }
+    }
+}

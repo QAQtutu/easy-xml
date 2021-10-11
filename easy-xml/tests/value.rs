@@ -6,7 +6,7 @@ use easy_xml::de;
 fn test() {
     // struct
     {
-        #[derive(Debug, XmlDeserialize)]
+        #[derive(Debug, XmlDeserialize, XmlSerialize)]
         struct Node {
             #[easy_xml(text)]
             text: String,
@@ -15,7 +15,7 @@ fn test() {
         assert_eq!(node.text.as_str(), "text");
     }
     {
-        #[derive(Debug, XmlDeserialize)]
+        #[derive(Debug, XmlDeserialize, XmlSerialize)]
         struct Node {
             #[easy_xml(text)]
             text: String,
