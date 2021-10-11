@@ -1,22 +1,25 @@
+use easy_xml::se;
+
 #[macro_use]
 extern crate easy_xml_derive;
 
 #[test]
 fn test() {
     {
-        #[derive(Debug, XmlDeserialize)]
+        #[derive(Debug, XmlDeserialize, XmlSerialize)]
+        #[easy_xml(root)]
         struct Content {
             #[easy_xml(rename = "Unnamed|Named|Unit", enum)]
             enums: Vec<EnumTest>,
         }
-        #[derive(Debug, XmlDeserialize)]
+        #[derive(Debug, XmlDeserialize, XmlSerialize)]
         struct Flatten {
             #[easy_xml(attribute)]
             attr: String,
             #[easy_xml(text)]
             text: String,
         }
-        #[derive(Debug, XmlDeserialize)]
+        #[derive(Debug, XmlDeserialize, XmlSerialize)]
         enum EnumTest {
             Unnamed(
                 #[easy_xml(attribute, rename = "attr")] String,
@@ -53,7 +56,7 @@ fn test() {
 
         assert_eq!(content.enums.len(), 3);
 
-        for e in content.enums {
+        for e in &content.enums {
             match e {
                 EnumTest::Unnamed(attr, text, node, flatten) => {
                     assert_eq!(attr.as_str(), "value");
@@ -77,6 +80,15 @@ fn test() {
                 EnumTest::Unit => {}
             }
         }
+
+        let xml = se::to_string(&content).unwrap();
+
+        println!("{}", xml);
+
+        assert_eq!(
+            xml.as_str(),
+            r#"<?xml version="1.0" encoding="UTF-8"?><Content><Unnamed attr="value" attr="value">node<Node>node</Node>node</Unnamed><Named attr="value1" attr="value1">node1<Node>node1</Node>node1</Named><Unit /></Content>"#
+        );
     }
 
     {
