@@ -38,7 +38,7 @@ pub fn expand_derive_struct(
         where
             Self: Sized,
         {
-            #code_for_flatten
+
             match element {
                 easy_xml::XmlElement::Text(s) => {}
                 easy_xml::XmlElement::Node(node) => {
@@ -53,6 +53,7 @@ pub fn expand_derive_struct(
                 }
                 _ => {}
             }
+            #code_for_flatten
         }
       }
     })

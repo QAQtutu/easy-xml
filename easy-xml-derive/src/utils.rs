@@ -353,7 +353,7 @@ impl<'a> Field<'a> {
                 if self.is_struct {
                     TokenStream::from_str(format!("self.{}", i.to_string()).as_str()).unwrap()
                 } else {
-                    TokenStream::from_str(format!("{}", i.to_string()).as_str()).unwrap()
+                    TokenStream::from_str(format!("f_{}", i.to_string()).as_str()).unwrap()
                 }
             }
             None => TokenStream::from_str(format!("f_{}", self.index).as_str()).unwrap(),
@@ -747,17 +747,34 @@ pub fn se_build_code_for_node(fields: &Vec<Field>) -> TokenStream {
                 },
                 None => quote! {None},
             };
-            quote! {
-              {
-                let mut child = easy_xml::XmlNode::empty();
-                child.name.local_name = #local_name;
-                child.name.prefix = #prefix;
+            if f.ty.has_vec() {
+                quote! {
+                  {
+                    for item in &#field_name{
+                      let mut child = easy_xml::XmlNode::empty();
+                      child.name.local_name = #local_name;
+                      child.name.prefix = #prefix;
 
-                let child = std::rc::Rc::new(std::cell::RefCell::new(child));
-                let mut child = easy_xml::XmlElement::Node(child);
-                #field_name.serialize(&mut child);
-                node.borrow_mut().elements.push(child);
-              }
+                      let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                      let mut child = easy_xml::XmlElement::Node(child);
+                      item.serialize(&mut child);
+                      node.borrow_mut().elements.push(child);
+                    }
+                  }
+                }
+            } else {
+                quote! {
+                  {
+                    let mut child = easy_xml::XmlNode::empty();
+                    child.name.local_name = #local_name;
+                    child.name.prefix = #prefix;
+
+                    let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                    let mut child = easy_xml::XmlElement::Node(child);
+                    #field_name.serialize(&mut child);
+                    node.borrow_mut().elements.push(child);
+                  }
+                }
             }
         })
         .collect();
@@ -774,7 +791,10 @@ pub fn se_build_code_for_fields(fields: &Vec<Field>) -> TokenStream {
                 return TokenStream::from_str(format!("f_{},", f.index).as_str()).unwrap();
             } else {
                 let ident = f.field.ident.as_ref().unwrap().to_string();
-                return TokenStream::from_str(ident.as_str()).unwrap();
+                return TokenStream::from_str(
+                    format!("{}:f_{},", ident.as_str(), ident.as_str()).as_str(),
+                )
+                .unwrap();
             }
         })
         .collect();

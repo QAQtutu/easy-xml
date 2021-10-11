@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 
@@ -44,7 +46,10 @@ fn build_code_for_text(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
                     let vars: TokenStream = (&named.named)
                         .into_iter()
                         .map(|f| {
-                            let ident = &f.ident;
+                            let field = f.ident.as_ref().unwrap().to_string();
+                            let ident =
+                                TokenStream::from_str(format!("{}:f_{}", field, field).as_str())
+                                    .unwrap();
                             quote! {
                               #ident,
                             }
@@ -77,7 +82,6 @@ fn build_code_for_text(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
 }
 
 fn build_code_for_node(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
-    let enum_name_str = enum_name.to_string();
     let code: TokenStream = (&data.variants)
         .into_iter()
         .map(|v| {

@@ -259,3 +259,45 @@ impl<T: XmlSerialize> XmlSerialize for Option<T> {
         }
     }
 }
+
+macro_rules! impl_se_for_number {
+    ($x:ty) => {
+        impl XmlSerialize for $x {
+            fn serialize(&self, node: &mut XmlElement)
+            where
+                Self: Sized,
+            {
+                match node {
+                    XmlElement::Text(text) => {
+                        text.push_str(self.to_string().as_str());
+                    }
+                    XmlElement::Node(node) => {
+                        node.as_ref()
+                            .borrow_mut()
+                            .elements
+                            .push(XmlElement::Text(self.to_string()));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+}
+
+impl_se_for_number!(usize);
+impl_se_for_number!(isize);
+
+impl_se_for_number!(u8);
+impl_se_for_number!(u16);
+impl_se_for_number!(u32);
+impl_se_for_number!(u64);
+impl_se_for_number!(u128);
+
+impl_se_for_number!(i8);
+impl_se_for_number!(i16);
+impl_se_for_number!(i32);
+impl_se_for_number!(i64);
+impl_se_for_number!(i128);
+
+impl_se_for_number!(f32);
+impl_se_for_number!(f64);

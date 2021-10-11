@@ -4,10 +4,6 @@ use crate::{XmlDeserialize, XmlDocument, XmlElement, XmlNode};
 use xml::reader::{EventReader, XmlEvent};
 
 impl XmlDocument {
-    pub fn from_str(xml: &str) -> xml::reader::Result<XmlDocument> {
-        let reader = EventReader::new(xml.as_bytes());
-        return XmlDocument::from_read(reader);
-    }
     pub fn from_read<R: Read>(reader: EventReader<R>) -> xml::reader::Result<XmlDocument> {
         let mut doc = None;
 
@@ -107,10 +103,16 @@ fn add_element_to_parent(
 }
 
 pub fn from_str<T: XmlDeserialize>(xml: &str) -> Result<T, Error> {
-    let doc = match XmlDocument::from_str(xml) {
+    return from_bytes(xml.as_bytes());
+}
+pub fn from_bytes<T: XmlDeserialize, R: Read>(source: R) -> Result<T, Error> {
+    let reader = EventReader::new(source);
+
+    let doc = match XmlDocument::from_read(reader) {
         Ok(doc) => doc,
         Err(_) => return Err(Error::BadXml),
     };
+
     match doc.elements.get(0) {
         Some(root) => T::deserialize(root),
         None => return Err(Error::BadXml),
