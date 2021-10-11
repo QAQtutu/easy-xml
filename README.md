@@ -57,7 +57,7 @@ let node: Node = easy_xml::de::from_str("<Node>text</Node>").unwrap();
 assert_eq!(node.text.as_str(), "text");
 
 //序列化
-let xml = se::to_string(&node).unwrap();
+let xml = easy_xml::se::to_string(&node).unwrap();
 assert_eq!(
     xml.as_str(),
     r#"<?xml version="1.0" encoding="UTF-8"?><Node>text</Node>"#
