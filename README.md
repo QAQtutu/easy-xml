@@ -38,8 +38,8 @@
 
 依赖：
 ```
-easy-xml = "0.1.2-beta.1"
-easy-xml-derive = "0.1.2-beta.1"
+easy-xml = "0.1.2-beta.2"
+easy-xml-derive = "0.1.2-beta.2"
 ```
 
 使用：

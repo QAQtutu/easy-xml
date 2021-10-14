@@ -1,6 +1,6 @@
 [package]
 name = "easy-xml-derive"
-version = "0.1.2-beta.1"
+version = "0.1.2-beta.2"
 authors = ["qaqtutu <203524203@qq.com>"]
 keywords = ["XML"]
 description = "The macros for easy-xml"

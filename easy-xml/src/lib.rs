@@ -224,6 +224,7 @@ impl_de_for_number!(i128);
 
 impl_de_for_number!(f32);
 impl_de_for_number!(f64);
+impl_de_for_number!(bool);
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -345,3 +346,4 @@ impl_se_for_number!(i128);
 
 impl_se_for_number!(f32);
 impl_se_for_number!(f64);
+impl_se_for_number!(bool);
