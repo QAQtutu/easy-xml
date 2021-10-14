@@ -11,7 +11,7 @@
 - 布尔值
 - 数字
 - 指针 （Box Rc Arc Cell RefCell）
-
+ 
 ## 支持参数
 
 - **text**：字段从节点文本内容中获取
@@ -19,25 +19,27 @@
 - **rename**：重命名xml节点名称，如果没有则节点名与结构体属性或者枚举值一致
 - **prefix**：重命名节点名称前缀
 - **flatten**：将当前节点传递给字段，即将字段属性展平
-- **enum**：匹配多个节点名称，需搭配rename使用，例如`#[easy_xml(rename = "Text|Img", enum)]`
-- **root**：根节点标记（目前为必须，不会自动给未标记的跟节点指定节点名称）
+- **enum**：匹配多个节点名称，需搭配rename使用，例如`#[easy_xml(rename = "Text|Img", enum)]`。
+- **root**：根节点标记。
+- **namespace**:命名空间，仅加在根节点顶部有效。
 
 
 ## 支持计划
-- namespace参数支持
-- xpath 部分支持
+- html支持
+- xpath部分支持
 
 ## 使用限制
 - 结构体属性中Vec与Option不能同时出现，且只能出现在第一层级,且不能多层嵌套。如 `Vec<String>` 和`Option<String>`合法，`Option<Vec<String>>` 是不合法的。
 - 如果字段是Vec类型则不能使用text参数，因为节点内容只有一个唯一值。
 - 参数attribute、text和flatten不能同时使用。
+- 参数enum仅用于枚举的序列化和反序列化，或结构体的反序列化。用于结构体的序列化将导致错误发生。
 
 ## 示例
 
 依赖：
 ```
-easy-xml = "0.1.2-beta"
-easy-xml-derive = "0.1.2-beta"
+easy-xml = "0.1.2-beta.1"
+easy-xml-derive = "0.1.2-beta.1"
 ```
 
 使用：
@@ -78,7 +80,7 @@ impl easy_xml::XmlSerialize for Node {
 }
 //反序列化
 impl easy_xml::XmlDeserialize for Node {
-    fn deserialize(node: &easy_xml::XmlElement) -> Result<Self, de::Error>
+    fn deserialize(node: &easy_xml::XmlElement) -> Result<Self, easy_xml::de::Error>
     where
         Self: Sized,
     {
@@ -88,5 +90,4 @@ impl easy_xml::XmlDeserialize for Node {
 ```
 
 ## 问题记录
-- enum参数暂时只能用于枚举，暂未测试其他类型。如果配合其他类型可能出现错误。
 - 指针类型未测试
