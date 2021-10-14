@@ -769,12 +769,12 @@ pub fn se_build_code_for_attribute(fields: &Vec<Field>) -> TokenStream {
                 //这里可以使用text()但是会多一次String复制
                 match text {
                     easy_xml::XmlElement::Text(value) => {
-                        let name = xml::name::OwnedName {
+                        let name = easy_xml::OwnedName {
                             local_name: #local_name.to_string(),
                             namespace: None,
                             prefix: #prefix,
                         };
-                        let attr = xml::attribute::OwnedAttribute { name, value };
+                        let attr = easy_xml::OwnedAttribute { name, value };
                         (&mut node.borrow_mut().attributes).push(attr);
                     }
                     _ => {}

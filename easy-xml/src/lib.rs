@@ -1,12 +1,15 @@
 extern crate easy_xml_derive;
 
+pub type OwnedName = xml::name::OwnedName;
+pub type OwnedAttribute = xml::attribute::OwnedAttribute;
+pub type Namespace = xml::namespace::Namespace;
+pub type XmlVersion = xml::common::XmlVersion;
+
 use std::{
     borrow::Borrow,
     cell::RefCell,
     rc::{Rc, Weak},
 };
-
-use xml::{attribute::OwnedAttribute, common::XmlVersion, name::OwnedName, namespace::Namespace};
 
 #[derive(Debug, Clone)]
 pub struct XmlDocument {
