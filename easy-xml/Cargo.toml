@@ -1,6 +1,6 @@
 [package]
 name = "easy-xml"
-version = "0.1.2-beta"
+version = "0.1.2-beta.1"
 authors = ["qaqtutu <203524203@qq.com>"]
 keywords = ["XML"]
 description = "An XML library"
@@ -15,4 +15,4 @@ edition = "2018"
 
 [dependencies]
 xml-rs = "0.8.3"
-easy-xml-derive = { version = "0.1.2-beta", path = "../easy-xml-derive" }
+easy-xml-derive = { version = "0.1.2-beta.1", path = "../easy-xml-derive" }
