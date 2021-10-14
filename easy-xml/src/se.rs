@@ -69,9 +69,13 @@ impl XmlElement {
                     name: Some(owned_name_to_name(&node.name)),
                 })?;
             }
-            XmlElement::Whitespace(_) => todo!(),
-            XmlElement::Comment(_) => todo!(),
-            XmlElement::CData(_) => todo!(),
+            XmlElement::Whitespace(_) => {}
+            XmlElement::Comment(comment) => {
+                w.write(XmlEvent::Comment(comment))?;
+            }
+            XmlElement::CData(cdata) => {
+                w.write(XmlEvent::CData(cdata))?;
+            }
         }
         Ok(())
     }

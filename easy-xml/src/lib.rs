@@ -25,7 +25,7 @@ pub enum XmlElement {
     CData(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct XmlNode {
     pub name: OwnedName,
     pub attributes: Vec<OwnedAttribute>,

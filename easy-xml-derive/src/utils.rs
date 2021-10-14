@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use proc_macro2::{token_stream::IntoIter, Delimiter, Ident, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
@@ -164,7 +164,7 @@ pub struct Attributes {
     pub attribute: bool,
     pub prefix: Option<String>,
     pub rename: Option<String>,
-    // pub namespaces: BTreeMap<String, String>,
+    pub namespace: BTreeMap<String, String>,
     pub enums: bool,
     pub root: bool,
 }
@@ -178,6 +178,7 @@ impl Attributes {
         let mut rename = None;
         let mut enums = false;
         let mut root = false;
+        let mut namespace = None;
 
         for attr in attrs.iter().filter(|a| a.path.is_ident("easy_xml")) {
             let mut attr_iter = attr.clone().tokens.into_iter();
@@ -208,6 +209,10 @@ impl Attributes {
                                 "rename" => {
                                     rename = get_value(&mut attr_iter);
                                 }
+                                "namespace" => {
+                                    let map = get_map(&mut attr_iter);
+                                    namespace = Some(map);
+                                }
                                 _ => {}
                             }
                         }
@@ -224,6 +229,10 @@ impl Attributes {
             rename,
             enums,
             root,
+            namespace: match namespace {
+                Some(map) => map,
+                None => BTreeMap::new(),
+            },
         }
     }
 }
@@ -240,6 +249,52 @@ fn get_value(iter: &mut IntoIter) -> Option<String> {
     } else {
         None
     }
+}
+
+fn get_map(iter: &mut IntoIter) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    if let (Some(TokenTree::Punct(operator)), Some(TokenTree::Group(value))) =
+        (iter.next(), iter.next())
+    {
+        if operator.as_char() != '=' {
+            return map;
+        }
+        match value.delimiter() {
+            Delimiter::Brace => {}
+            _ => return map,
+        }
+
+        let mut iter = value.stream().into_iter();
+        loop {
+            if let (
+                Some(TokenTree::Literal(key)),
+                Some(TokenTree::Punct(operator)),
+                Some(TokenTree::Literal(value)),
+            ) = (iter.next(), iter.next(), iter.next())
+            {
+                if operator.as_char() != ':' {
+                    return map;
+                }
+                map.insert(
+                    key.to_string().replace("\"", ""),
+                    value.to_string().replace("\"", ""),
+                );
+                if let Some(TokenTree::Punct(operator)) = iter.next() {
+                    if operator.as_char() == ',' {
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        return map;
+    }
+
+    return map;
 }
 
 // OwnedName匹配
@@ -589,32 +644,50 @@ pub fn de_var_collect(fields: &Vec<Field>) -> TokenStream {
         .collect()
 }
 
-//
 pub fn se_build_code_for_root(ident: &Ident, attrs: &Attributes) -> TokenStream {
+    let code_namespace: TokenStream = (&attrs.namespace)
+        .into_iter()
+        .map(|(k, v)| {
+            quote! {
+              node.borrow_mut().namespace.put(#k.to_string(), #v.to_string());
+            }
+        })
+        .collect();
+
     let ident = ident.to_string();
+    let code_rename = match &attrs.rename {
+        Some(rename) => quote! {
+          node.borrow_mut().name.local_name = #rename.to_string();
+        },
+        None => quote! {
+          node.borrow_mut().name.local_name = #ident.to_string();
+        },
+    };
+    let code_prefix = match &attrs.prefix {
+        Some(prefix) => quote! {
+          node.borrow_mut().name.prefix = Some(#prefix.to_string());
+        },
+        None => quote! {},
+    };
+
     if attrs.root {
-        let code_rename = match &attrs.rename {
-            Some(rename) => quote! {
-              node.borrow_mut().name.local_name = #rename.to_string();
-            },
-            None => quote! {
-              node.borrow_mut().name.local_name = #ident.to_string();
-            },
-        };
-        let code_prefix = match &attrs.prefix {
-            Some(prefix) => quote! {
-              node.borrow_mut().name.prefix = Some(#prefix.to_string());
-            },
-            None => quote! {},
-        };
         return quote! {
           {
             #code_rename
             #code_prefix
+            #code_namespace
           }
         };
+    } else {
+        quote! {
+          //没有local_name说明上层没传，是根元素且没加root参数
+          if node.borrow().name.local_name.len() == 0 {
+            #code_rename
+            #code_prefix
+            #code_namespace
+          }
+        }
     }
-    quote! {}
 }
 
 pub fn se_build_code_for_text(fields: &Vec<Field>) -> TokenStream {
@@ -733,9 +806,12 @@ pub fn se_build_code_for_node(fields: &Vec<Field>) -> TokenStream {
                   #rename.to_string()
                 },
                 None => match f.field.ident.as_ref() {
-                    Some(ident) => quote! {
-                      #ident.to_string()
-                    },
+                    Some(ident) => {
+                        let ident = ident.to_string();
+                        quote! {
+                          #ident.to_string()
+                        }
+                    }
                     None => {
                         panic!("Unnamed enum need rename!")
                     }
