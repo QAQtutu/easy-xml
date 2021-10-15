@@ -1,4 +1,4 @@
-use easy_xml::se;
+use easy_xml::{de, se};
 
 #[macro_use]
 extern crate easy_xml_derive;
@@ -90,16 +90,42 @@ fn test() {
             r#"<?xml version="1.0" encoding="UTF-8"?><Content><Unnamed attr="value" attr="value">node<Node>node</Node>node</Unnamed><Named attr="value1" attr="value1">node1<Node>node1</Node>node1</Named><Unit /></Content>"#
         );
     }
+}
 
-    {
-        #[derive(Debug, XmlDeserialize)]
-        enum Test {
-            #[easy_xml(prefix = "ofd")]
-            T1,
-            #[easy_xml(prefix = "ofd")]
-            T2,
-            #[easy_xml(prefix = "ofd")]
-            T3,
-        }
+#[test]
+
+// rename捕获多种Tag，to_text将捕获的tag内容转成Text类型传递
+fn test_for_node() {
+    #[derive(PartialEq, Debug, XmlDeserialize, XmlSerialize)]
+    enum Type {
+        T1,
+        T2,
+        T3,
     }
+    #[derive(PartialEq, Debug, XmlDeserialize, XmlSerialize)]
+    enum Obj {
+        Text,
+        Img,
+        Video,
+    }
+    #[derive(PartialEq, Debug, XmlDeserialize, XmlSerialize)]
+    struct Node {
+        #[easy_xml(rename = "Type", to_text)]
+        ty: Type,
+        #[easy_xml(rename = "Text|Img|Video")]
+        objs: Vec<Obj>,
+    }
+
+    let node = Node {
+        ty: Type::T2,
+        objs: vec![Obj::Text, Obj::Img, Obj::Video],
+    };
+    let xml = se::to_string(&node).unwrap();
+
+    assert_eq!(
+        xml.as_str(),
+        r#"<?xml version="1.0" encoding="UTF-8"?><Node><Type>T2</Type><Text /><Img /><Video /></Node>"#
+    );
+
+    assert_eq!(node, de::from_str::<Node>(xml.as_str()).unwrap());
 }

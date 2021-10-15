@@ -22,6 +22,25 @@ pub fn expand_derive_struct(
         f.check()
     }
 
+    let code_text_node: TokenStream = (&fields)
+        .into_iter()
+        .filter(|f| f.attrs.skip == false)
+        .map(|f| {
+            let var = f.field_name();
+            if (&f.ty).has_vec() {
+                quote! {
+                  for item in &#var {
+                    item.serialize(element)
+                  }
+                }
+            } else {
+                quote! {
+                  #var.serialize(element);
+                }
+            }
+        })
+        .collect();
+
     let code_for_root = utils::se_build_code_for_root(&ast.ident, &attrs);
 
     let code_for_text = utils::se_build_code_for_text(&fields);
@@ -40,7 +59,9 @@ pub fn expand_derive_struct(
         {
 
             match element {
-                easy_xml::XmlElement::Text(s) => {}
+                easy_xml::XmlElement::Text(s) => {
+                  #code_text_node
+                }
                 easy_xml::XmlElement::Node(node) => {
 
                     #code_for_root

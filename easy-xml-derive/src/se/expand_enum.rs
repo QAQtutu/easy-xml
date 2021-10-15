@@ -15,6 +15,15 @@ pub fn expand_derive_enum(
 
     let code_for_node = build_code_for_node(enum_name, data);
 
+    let code_for_node_text = quote! {
+      if node.borrow().name.local_name.len() != 0 {
+        let mut text = String::new();
+        #code_for_text
+        node.borrow_mut().elements.push(easy_xml::XmlElement::Text(text));
+        return;
+      }
+    };
+
     Ok(quote! {
       impl easy_xml::XmlSerialize for #enum_name {
         fn serialize(&self, element: &mut easy_xml::XmlElement)
@@ -26,7 +35,9 @@ pub fn expand_derive_enum(
                   #code_for_text
               }
               easy_xml::XmlElement::Node(node) => {
-                  #code_for_node
+                #code_for_node_text
+
+                #code_for_node
               },
               _ => {}
           }

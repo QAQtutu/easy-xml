@@ -63,4 +63,14 @@ fn test() {
             r#"<?xml version="1.0" encoding="UTF-8"?><Node>text</Node>"#
         );
     }
+
+    {
+        #[derive(Default, Debug, Clone, PartialEq, XmlDeserialize, XmlSerialize)]
+        pub struct CustomData {
+            #[easy_xml(attribute, rename = "Name")]
+            pub name: Option<String>,
+            #[easy_xml(text)]
+            pub value: Option<String>,
+        }
+    }
 }
