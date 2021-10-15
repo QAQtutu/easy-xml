@@ -37,64 +37,62 @@ fn owned_name_to_name(owned_name: &OwnedName) -> Name {
     }
 }
 
-impl XmlElement {
-    fn serialize<W: Write>(&self, w: &mut EventWriter<W>) -> xml::writer::Result<()> {
-        match self {
-            XmlElement::Text(text) => {
-                w.write(XmlEvent::characters(text.as_str()))?;
-            }
-            XmlElement::Node(node) => {
-                let node = &*node.borrow_mut();
-                let attributes = &node.attributes;
-                let attributes = attributes
-                    .into_iter()
-                    .map(|attr| Attribute {
-                        name: owned_name_to_name(&attr.name),
-                        value: attr.value.as_str(),
-                    })
-                    .collect::<Vec<_>>();
-
-                w.write(XmlEvent::StartElement {
-                    name: owned_name_to_name(&node.name),
-                    attributes: Cow::Borrowed(attributes.as_slice()),
-                    namespace: Cow::Borrowed(&node.namespace),
-                })?;
-
-                let elements = &node.elements;
-                for e in elements {
-                    e.serialize(w)?;
-                }
-
-                w.write(XmlEvent::EndElement {
-                    name: Some(owned_name_to_name(&node.name)),
-                })?;
-            }
-            XmlElement::Whitespace(_) => {}
-            XmlElement::Comment(comment) => {
-                w.write(XmlEvent::Comment(comment))?;
-            }
-            XmlElement::CData(cdata) => {
-                w.write(XmlEvent::CData(cdata))?;
-            }
+fn format_xml_element<W: Write>(
+    w: &mut EventWriter<W>,
+    element: &XmlElement,
+) -> xml::writer::Result<()> {
+    match element {
+        XmlElement::Text(text) => {
+            w.write(XmlEvent::characters(text.as_str()))?;
         }
-        Ok(())
+        XmlElement::Node(node) => {
+            let node = &*node.borrow_mut();
+            let attributes = &node.attributes;
+            let attributes = attributes
+                .into_iter()
+                .map(|attr| Attribute {
+                    name: owned_name_to_name(&attr.name),
+                    value: attr.value.as_str(),
+                })
+                .collect::<Vec<_>>();
+
+            w.write(XmlEvent::StartElement {
+                name: owned_name_to_name(&node.name),
+                attributes: Cow::Borrowed(attributes.as_slice()),
+                namespace: Cow::Borrowed(&node.namespace),
+            })?;
+
+            let elements = &node.elements;
+            for e in elements {
+                format_xml_element(w, e)?;
+            }
+
+            w.write(XmlEvent::EndElement {
+                name: Some(owned_name_to_name(&node.name)),
+            })?;
+        }
+        XmlElement::Whitespace(_) => {}
+        XmlElement::Comment(comment) => {
+            w.write(XmlEvent::Comment(comment))?;
+        }
+        XmlElement::CData(cdata) => {
+            w.write(XmlEvent::CData(cdata))?;
+        }
     }
+    Ok(())
 }
+fn format_xml<W: Write>(w: &mut EventWriter<W>, doc: &XmlDocument) -> xml::writer::Result<()> {
+    w.write(XmlEvent::StartDocument {
+        version: doc.version,
+        encoding: Some(doc.encoding.as_str()),
+        standalone: doc.standalone.clone(),
+    })?;
 
-impl XmlDocument {
-    fn serialize<W: Write>(&self, w: &mut EventWriter<W>) -> xml::writer::Result<()> {
-        w.write(XmlEvent::StartDocument {
-            version: self.version,
-            encoding: Some(self.encoding.as_str()),
-            standalone: self.standalone.clone(),
-        })?;
-
-        for e in &self.elements {
-            e.serialize(w)?;
-        }
-
-        Ok(())
+    for e in &doc.elements {
+        format_xml_element(w, e)?;
     }
+
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -137,5 +135,5 @@ fn serialize<T: XmlSerialize, W: Write>(
 
     doc.elements.push(root);
 
-    doc.serialize(writer)
+    format_xml(writer, &doc)
 }
