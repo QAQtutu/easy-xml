@@ -3,85 +3,82 @@ use std::{cell::RefCell, io::Read, rc::Rc};
 use crate::{XmlDeserialize, XmlDocument, XmlElement, XmlNode};
 use xml::reader::{EventReader, XmlEvent};
 
-impl XmlDocument {
-    pub fn from_read<R: Read>(reader: EventReader<R>) -> xml::reader::Result<XmlDocument> {
-        let mut doc = None;
+fn parse_xml<R: Read>(reader: EventReader<R>) -> xml::reader::Result<XmlDocument> {
+    let mut doc = None;
 
-        let mut stack = Vec::new();
-        for e in reader {
-            let e = e?;
-            match e {
-                XmlEvent::StartDocument {
+    let mut stack = Vec::new();
+    for e in reader {
+        let e = e?;
+        match e {
+            XmlEvent::StartDocument {
+                version,
+                encoding,
+                standalone,
+            } => {
+                doc = Some(XmlDocument {
                     version,
                     encoding,
                     standalone,
-                } => {
-                    doc = Some(XmlDocument {
-                        version,
-                        encoding,
-                        standalone,
-                        elements: vec![],
-                    });
-                }
-                XmlEvent::StartElement {
+                    elements: vec![],
+                });
+            }
+            XmlEvent::StartElement {
+                name,
+                attributes,
+                namespace,
+            } => {
+                let node = XmlNode {
                     name,
                     attributes,
                     namespace,
-                } => {
-                    let node = XmlNode {
-                        name,
-                        attributes,
-                        namespace,
-                        elements: vec![],
-                        parent: None,
-                    };
-                    let node = Rc::new(RefCell::new(node));
-                    stack.push(node);
-                }
-                XmlEvent::EndElement { name: _ } => {
-                    let node = stack.pop().unwrap();
-                    add_element_to_parent(
-                        XmlElement::Node(node),
-                        &mut stack,
-                        (&mut doc).as_mut().unwrap(),
-                    );
-                }
-                XmlEvent::Characters(s) => {
-                    add_element_to_parent(
-                        XmlElement::Text(s),
-                        &mut stack,
-                        (&mut doc).as_mut().unwrap(),
-                    );
-                }
-                XmlEvent::Comment(s) => {
-                    add_element_to_parent(
-                        XmlElement::Comment(s),
-                        &mut stack,
-                        (&mut doc).as_mut().unwrap(),
-                    );
-                }
-                XmlEvent::CData(s) => {
-                    add_element_to_parent(
-                        XmlElement::CData(s),
-                        &mut stack,
-                        (&mut doc).as_mut().unwrap(),
-                    );
-                }
-                XmlEvent::Whitespace(s) => {
-                    add_element_to_parent(
-                        XmlElement::Whitespace(s),
-                        &mut stack,
-                        (&mut doc).as_mut().unwrap(),
-                    );
-                }
-                _ => {}
+                    elements: vec![],
+                    parent: None,
+                };
+                let node = Rc::new(RefCell::new(node));
+                stack.push(node);
             }
+            XmlEvent::EndElement { name: _ } => {
+                let node = stack.pop().unwrap();
+                add_element_to_parent(
+                    XmlElement::Node(node),
+                    &mut stack,
+                    (&mut doc).as_mut().unwrap(),
+                );
+            }
+            XmlEvent::Characters(s) => {
+                add_element_to_parent(
+                    XmlElement::Text(s),
+                    &mut stack,
+                    (&mut doc).as_mut().unwrap(),
+                );
+            }
+            XmlEvent::Comment(s) => {
+                add_element_to_parent(
+                    XmlElement::Comment(s),
+                    &mut stack,
+                    (&mut doc).as_mut().unwrap(),
+                );
+            }
+            XmlEvent::CData(s) => {
+                add_element_to_parent(
+                    XmlElement::CData(s),
+                    &mut stack,
+                    (&mut doc).as_mut().unwrap(),
+                );
+            }
+            XmlEvent::Whitespace(s) => {
+                add_element_to_parent(
+                    XmlElement::Whitespace(s),
+                    &mut stack,
+                    (&mut doc).as_mut().unwrap(),
+                );
+            }
+            _ => {}
         }
-
-        return Ok(doc.unwrap());
     }
-}
 
+    return Ok(doc.unwrap());
+}
 fn add_element_to_parent(
     node: XmlElement,
     stack: &mut Vec<Rc<RefCell<XmlNode>>>,
@@ -108,7 +105,7 @@ pub fn from_str<T: XmlDeserialize>(xml: &str) -> Result<T, Error> {
 pub fn from_bytes<T: XmlDeserialize, R: Read>(source: R) -> Result<T, Error> {
     let reader = EventReader::new(source);
 
-    let doc = match XmlDocument::from_read(reader) {
+    let doc = match parse_xml(reader) {
         Ok(doc) => doc,
         Err(_) => return Err(Error::BadXml),
     };
