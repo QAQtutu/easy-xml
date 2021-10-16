@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use proc_macro2::{token_stream::IntoIter, Delimiter, Ident, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
@@ -164,8 +164,12 @@ pub struct Attributes {
     pub attribute: bool,
     pub prefix: Option<String>,
     pub rename: Option<String>,
-    // pub namespaces: BTreeMap<String, String>,
+    pub namespace: BTreeMap<String, String>,
     pub enums: bool,
+    pub root: bool,
+    pub skip: bool,
+    pub to_text: bool,
+    pub container: bool,
 }
 
 impl Attributes {
@@ -176,6 +180,11 @@ impl Attributes {
         let mut prefix = None;
         let mut rename = None;
         let mut enums = false;
+        let mut root = false;
+        let mut skip = false;
+        let mut to_text = false;
+        let mut container = false;
+        let mut namespace = None;
 
         for attr in attrs.iter().filter(|a| a.path.is_ident("easy_xml")) {
             let mut attr_iter = attr.clone().tokens.into_iter();
@@ -197,11 +206,27 @@ impl Attributes {
                                 "enum" => {
                                     enums = true;
                                 }
+                                "root" => {
+                                    root = true;
+                                }
+                                "skip" => {
+                                    skip = true;
+                                }
+                                "to_text" => {
+                                    to_text = true;
+                                }
+                                "container" => {
+                                    container = true;
+                                }
                                 "prefix" => {
                                     prefix = get_value(&mut attr_iter);
                                 }
                                 "rename" => {
                                     rename = get_value(&mut attr_iter);
+                                }
+                                "namespace" => {
+                                    let map = get_map(&mut attr_iter);
+                                    namespace = Some(map);
                                 }
                                 _ => {}
                             }
@@ -218,6 +243,14 @@ impl Attributes {
             prefix,
             rename,
             enums,
+            root,
+            skip,
+            to_text,
+            container,
+            namespace: match namespace {
+                Some(map) => map,
+                None => BTreeMap::new(),
+            },
         }
     }
 }
@@ -236,13 +269,59 @@ fn get_value(iter: &mut IntoIter) -> Option<String> {
     }
 }
 
+fn get_map(iter: &mut IntoIter) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    if let (Some(TokenTree::Punct(operator)), Some(TokenTree::Group(value))) =
+        (iter.next(), iter.next())
+    {
+        if operator.as_char() != '=' {
+            return map;
+        }
+        match value.delimiter() {
+            Delimiter::Brace => {}
+            _ => return map,
+        }
+
+        let mut iter = value.stream().into_iter();
+        loop {
+            if let (
+                Some(TokenTree::Literal(key)),
+                Some(TokenTree::Punct(operator)),
+                Some(TokenTree::Literal(value)),
+            ) = (iter.next(), iter.next(), iter.next())
+            {
+                if operator.as_char() != ':' {
+                    return map;
+                }
+                map.insert(
+                    key.to_string().replace("\"", ""),
+                    value.to_string().replace("\"", ""),
+                );
+                if let Some(TokenTree::Punct(operator)) = iter.next() {
+                    if operator.as_char() == ',' {
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        return map;
+    }
+
+    return map;
+}
+
 // OwnedName匹配
 pub fn owned_name_match(val_name: &Ident, attrs: &Attributes) -> TokenStream {
     let mut token = String::from("true ");
     match &attrs.rename {
         Some(rename) => {
-            if attrs.enums {
-                token.push_str("&& { true");
+            if rename.contains("|") {
+                token.push_str("&& { false");
                 for i in rename.split("|") {
                     token.push_str(format!("|| \"{}\" == &name.local_name ", i).as_str())
                 }
@@ -256,7 +335,7 @@ pub fn owned_name_match(val_name: &Ident, attrs: &Attributes) -> TokenStream {
 
     match &attrs.prefix {
         Some(prefix) => {
-            token.push_str(format!("{{ && match &name.prefix {{ Some(prefix) => prefix.as_str() == \"{}\", None => false, }}", prefix).as_str());
+            token.push_str(format!(" && match &name.prefix {{ Some(prefix) => prefix.as_str() == \"{}\", None => false, }}", prefix).as_str());
         }
         None => {}
     };
@@ -270,17 +349,29 @@ pub fn owned_name_match(val_name: &Ident, attrs: &Attributes) -> TokenStream {
 
 pub struct Field<'a> {
     field: &'a syn::Field,
-    ty: TypeWapper,
+    pub ty: TypeWapper,
     pub attrs: Attributes,
+    is_struct: bool,
+    // unnamed字段的序号
     index: i32,
 }
 impl<'a> Field<'a> {
+    pub fn from_struct(field: &'a syn::Field) -> Self {
+        Field {
+            field,
+            index: -1,
+            attrs: Attributes::new(&field.attrs),
+            ty: TypeWapper::new(&field.ty),
+            is_struct: true,
+        }
+    }
     pub fn from_named(field: &'a syn::Field) -> Self {
         Field {
             field,
             index: -1,
             attrs: Attributes::new(&field.attrs),
             ty: TypeWapper::new(&field.ty),
+            is_struct: false,
         }
     }
     pub fn from_unnamed(field: &'a syn::Field, index: i32) -> Self {
@@ -289,6 +380,7 @@ impl<'a> Field<'a> {
             index,
             attrs: Attributes::new(&field.attrs),
             ty: TypeWapper::new(&field.ty),
+            is_struct: false,
         }
     }
 
@@ -319,6 +411,7 @@ impl<'a> Field<'a> {
         }
     }
 
+    //临时变量名称
     pub fn var_name(&self) -> TokenStream {
         match self.field.ident.as_ref() {
             Some(i) => TokenStream::from_str(format!("f_{}", i.to_string()).as_str()).unwrap(),
@@ -326,13 +419,34 @@ impl<'a> Field<'a> {
         }
     }
 
-    pub fn owned_name_match(&self) -> TokenStream {
+    //
+    pub fn field_name(&self) -> TokenStream {
+        match self.field.ident.as_ref() {
+            Some(i) => {
+                if self.is_struct {
+                    TokenStream::from_str(format!("self.{}", i.to_string()).as_str()).unwrap()
+                } else {
+                    TokenStream::from_str(format!("f_{}", i.to_string()).as_str()).unwrap()
+                }
+            }
+            None => TokenStream::from_str(format!("f_{}", self.index).as_str()).unwrap(),
+        }
+    }
+
+    pub fn multi_tag(&self) -> bool {
+        if let Some(rename) = &self.attrs.rename {
+            return rename.contains("|");
+        }
+        return false;
+    }
+
+    pub fn de_owned_name_match(&self) -> TokenStream {
         let mut token = String::from("true ");
         let attrs = &self.attrs;
         match &attrs.rename {
             Some(rename) => {
-                if attrs.enums {
-                    token.push_str("&& { true");
+                if rename.contains("|") {
+                    token.push_str("&& { false");
                     for i in rename.split("|") {
                         token.push_str(format!("|| \"{}\" == &name.local_name ", i).as_str())
                     }
@@ -351,7 +465,7 @@ impl<'a> Field<'a> {
 
         match &attrs.prefix {
             Some(prefix) => {
-                token.push_str(format!("{{ && match &name.prefix {{ Some(prefix) => prefix.as_str() == \"{}\", None => false, }}", prefix).as_str());
+                token.push_str(format!("&&  match &name.prefix {{ Some(prefix) => prefix.as_str() == \"{}\", None => false, }}", prefix).as_str());
             }
             None => {}
         };
@@ -363,7 +477,7 @@ impl<'a> Field<'a> {
         }
     }
 
-    pub fn var_declare(&self) -> TokenStream {
+    pub fn de_var_declare(&self) -> TokenStream {
         let var_name = self.var_name();
 
         let ty = &self.ty;
@@ -387,7 +501,7 @@ impl<'a> Field<'a> {
         }
     }
 
-    pub fn get_var_instance(&self) -> TokenStream {
+    pub fn de_get_var_instance(&self) -> TokenStream {
         let ty = TypeWapper::new(&self.field.ty);
 
         let is_vec = ty.has_vec();
@@ -420,15 +534,15 @@ impl<'a> Field<'a> {
     }
 }
 
-pub fn build_code_for_declare(fields: &Vec<Field>) -> TokenStream {
-    fields.into_iter().map(|f| f.var_declare()).collect()
+pub fn de_build_code_for_declare(fields: &Vec<Field>) -> TokenStream {
+    fields.into_iter().map(|f| f.de_var_declare()).collect()
 }
 
-pub fn build_code_for_text(fields: &Vec<Field>) -> TokenStream {
+pub fn de_build_code_for_text(fields: &Vec<Field>) -> TokenStream {
     let text_code: TokenStream = (&fields)
         .into_iter()
         .filter(|f| f.attrs.text)
-        .map(|f| f.get_var_instance())
+        .map(|f| f.de_get_var_instance())
         .collect();
 
     let text_code = quote! {
@@ -442,11 +556,11 @@ pub fn build_code_for_text(fields: &Vec<Field>) -> TokenStream {
     return text_code;
 }
 
-pub fn build_code_for_flatten(fields: &Vec<Field>) -> TokenStream {
+pub fn de_build_code_for_flatten(fields: &Vec<Field>) -> TokenStream {
     let flatten_code: TokenStream = (&fields)
         .into_iter()
         .filter(|f| f.attrs.flatten)
-        .map(|f| f.get_var_instance())
+        .map(|f| f.de_get_var_instance())
         .collect();
 
     let flatten_code = quote! {
@@ -457,15 +571,15 @@ pub fn build_code_for_flatten(fields: &Vec<Field>) -> TokenStream {
     return flatten_code;
 }
 
-pub fn build_code_for_attribute(fields: &Vec<Field>) -> TokenStream {
+pub fn de_build_code_for_attribute(fields: &Vec<Field>) -> TokenStream {
     let mut count = 0;
     let attribute_code: TokenStream = (&fields)
         .into_iter()
         .filter(|f| f.attrs.attribute)
         .map(|f| {
             count += 1;
-            let owned_name_match = f.owned_name_match();
-            let var_instance = f.get_var_instance();
+            let owned_name_match = f.de_owned_name_match();
+            let var_instance = f.de_get_var_instance();
             quote! {
               if #owned_name_match {
                 let element = easy_xml::XmlElement::Text(attr.value.clone());
@@ -487,15 +601,34 @@ pub fn build_code_for_attribute(fields: &Vec<Field>) -> TokenStream {
     }
 }
 
-pub fn build_code_for_children(fields: &Vec<Field>) -> TokenStream {
+pub fn de_build_code_for_children(fields: &Vec<Field>) -> TokenStream {
     let mut count = 0;
     let code: TokenStream = (&fields)
         .into_iter()
         .filter(|f| f.attrs.attribute == false && f.attrs.text == false && f.attrs.flatten == false)
         .map(|f| {
             count += 1;
-            let owned_name_match = f.owned_name_match();
-            let var_instance = f.get_var_instance();
+            let owned_name_match = f.de_owned_name_match();
+            let var_instance = f.de_get_var_instance();
+            let var_instance = {
+                if f.attrs.to_text {
+                    quote! {
+                      let mut text = String::new();
+                      node.text(&mut text);
+                      let element= easy_xml::XmlElement::Text(text);
+                      #var_instance
+                    }
+                } else if f.attrs.container {
+                    quote! {
+                      for element in &node.elements {
+                        #var_instance
+                      }
+                    }
+                } else {
+                    quote! {{#var_instance}}
+                }
+            };
+
             quote! {
               if #owned_name_match {
                 #var_instance
@@ -509,6 +642,7 @@ pub fn build_code_for_children(fields: &Vec<Field>) -> TokenStream {
           for element in &node.elements {
             match element {
               easy_xml::XmlElement::Node(node) => {
+                  let node = &*node.borrow();
                   let name = &node.name;
                   #code
               }
@@ -521,7 +655,7 @@ pub fn build_code_for_children(fields: &Vec<Field>) -> TokenStream {
     }
 }
 
-pub fn var_rebind(fields: &Vec<Field>) -> TokenStream {
+pub fn de_var_rebind(fields: &Vec<Field>) -> TokenStream {
     (&fields)
         .into_iter()
         .map(|f| {
@@ -541,7 +675,7 @@ pub fn var_rebind(fields: &Vec<Field>) -> TokenStream {
         .collect()
 }
 
-pub fn var_collect(fields: &Vec<Field>) -> TokenStream {
+pub fn de_var_collect(fields: &Vec<Field>) -> TokenStream {
     (&fields)
         .into_iter()
         .map(|f| {
@@ -552,4 +686,311 @@ pub fn var_collect(fields: &Vec<Field>) -> TokenStream {
             }
         })
         .collect()
+}
+
+pub fn se_build_code_for_root(ident: &Ident, attrs: &Attributes) -> TokenStream {
+    let code_namespace: TokenStream = (&attrs.namespace)
+        .into_iter()
+        .map(|(k, v)| {
+            quote! {
+              node.borrow_mut().namespace.put(#k.to_string(), #v.to_string());
+            }
+        })
+        .collect();
+
+    let ident = ident.to_string();
+    let code_rename = match &attrs.rename {
+        Some(rename) => quote! {
+          node.borrow_mut().name.local_name = #rename.to_string();
+        },
+        None => quote! {
+          node.borrow_mut().name.local_name = #ident.to_string();
+        },
+    };
+    let code_prefix = match &attrs.prefix {
+        Some(prefix) => quote! {
+          node.borrow_mut().name.prefix = Some(#prefix.to_string());
+        },
+        None => quote! {},
+    };
+
+    if attrs.root {
+        return quote! {
+          {
+            #code_rename
+            #code_prefix
+            #code_namespace
+          }
+        };
+    } else {
+        quote! {
+          //没有local_name说明上层没传，是根元素且没加root参数
+          if node.borrow().name.local_name.len() == 0 {
+            #code_rename
+            #code_prefix
+            #code_namespace
+          }
+        }
+    }
+}
+
+pub fn se_build_code_for_text(fields: &Vec<Field>) -> TokenStream {
+    let mut count = 0;
+    let code_text: TokenStream = fields
+        .into_iter()
+        .filter(|f| f.attrs.text)
+        .map(|f| {
+            count += 1;
+            let field_name = f.field_name();
+            quote! {
+              #field_name.serialize(&mut text);
+            }
+        })
+        .collect();
+    if count > 0 {
+        quote! {
+          {
+            let mut text = easy_xml::XmlElement::Text(String::new());
+            #code_text
+            node.borrow_mut().elements.push(text);
+          }
+        }
+    } else {
+        quote! {}
+    }
+}
+
+pub fn se_build_code_for_flatten(fields: &Vec<Field>) -> TokenStream {
+    let code: TokenStream = fields
+        .into_iter()
+        .filter(|f| f.attrs.flatten == true)
+        .map(|f| {
+            let field_name = f.field_name();
+            quote! {
+              #field_name.serialize(element);
+            }
+        })
+        .collect();
+    quote! {
+      {
+        #code
+      }
+    }
+}
+
+pub fn se_build_code_for_attribute(fields: &Vec<Field>) -> TokenStream {
+    let mut count = 0;
+    let code: TokenStream = fields
+        .into_iter()
+        .filter(|f| f.attrs.attribute)
+        .map(|f| {
+            count += 1;
+            let field_name = f.field_name();
+            let local_name = match &f.attrs.rename {
+                Some(rename) => quote! {
+                  #rename.to_string()
+                },
+                None => match f.field.ident.as_ref() {
+                    Some(ident) => {
+                        let ident = ident.to_string();
+                        quote! {
+                          #ident.to_string()
+                        }
+                    }
+                    None => todo!(),
+                },
+            };
+            let prefix = match &f.attrs.prefix {
+                Some(prefix) => quote! {
+                  Some(#prefix.to_string())
+                },
+                None => quote! {None},
+            };
+            quote! {
+              {
+                let mut text = easy_xml::XmlElement::Text(String::new());
+                #field_name.serialize(&mut text);
+                //这里可以使用text()但是会多一次String复制
+                match text {
+                    easy_xml::XmlElement::Text(value) => {
+                        let name = easy_xml::OwnedName {
+                            local_name: #local_name.to_string(),
+                            namespace: None,
+                            prefix: #prefix,
+                        };
+                        let attr = easy_xml::OwnedAttribute { name, value };
+                        (&mut node.borrow_mut().attributes).push(attr);
+                    }
+                    _ => {}
+                }
+            }
+            }
+        })
+        .collect();
+    if count > 0 {
+        quote! {
+          {
+            #code
+          }
+        }
+    } else {
+        quote! {}
+    }
+}
+
+pub fn se_build_code_for_node(fields: &Vec<Field>) -> TokenStream {
+    let code: TokenStream = fields
+        .into_iter()
+        .filter(|f| {
+            f.attrs.text == false
+                && f.attrs.attribute == false
+                && f.attrs.flatten == false
+                && f.attrs.skip == false
+        })
+        .map(|f| {
+            let field_name = f.field_name();
+
+            let local_name = match &f.attrs.rename {
+                // 节点名称由子节点自己决定
+                Some(rename) => match f.multi_tag() {
+                    true => quote! {
+                      "".to_string()
+                    },
+                    false => quote! {
+                      #rename.to_string()
+                    },
+                },
+                None => match f.field.ident.as_ref() {
+                    Some(ident) => {
+                        let ident = ident.to_string();
+                        quote! {
+                          #ident.to_string()
+                        }
+                    }
+                    None => {
+                        panic!("Unnamed enum need rename!")
+                    }
+                },
+            };
+            let prefix = match &f.attrs.prefix {
+                Some(prefix) => quote! {
+                  Some(#prefix.to_string())
+                },
+                None => quote! {None},
+            };
+            if f.ty.has_vec() {
+                if f.attrs.container {
+                    quote! {
+                      {
+                        if #field_name.len() > 0 {
+                          let mut container = easy_xml::XmlNode::empty();
+                          container.name.local_name = #local_name;
+                          container.name.prefix = #prefix;
+                          for item in &#field_name{
+                            let mut child = easy_xml::XmlNode::empty();
+                            let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                            let mut child = easy_xml::XmlElement::Node(child);
+                            item.serialize(&mut child);
+                            container.elements.push(child);
+                          }
+                          let container = std::rc::Rc::new(std::cell::RefCell::new(container));
+                          let mut container = easy_xml::XmlElement::Node(container);
+                          node.borrow_mut().elements.push(container);
+                        }
+                      }
+                    }
+                } else {
+                    quote! {
+                      {
+                        for item in &#field_name{
+                          let mut child = easy_xml::XmlNode::empty();
+                          child.name.local_name = #local_name;
+                          child.name.prefix = #prefix;
+
+                          let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                          let mut child = easy_xml::XmlElement::Node(child);
+                          item.serialize(&mut child);
+                          node.borrow_mut().elements.push(child);
+                        }
+                      }
+                    }
+                }
+            } else {
+                if f.ty.has_option() {
+                    quote! {
+                      {
+                        if let Some(item) = &#field_name {
+                          let mut child = easy_xml::XmlNode::empty();
+                          child.name.local_name = #local_name;
+                          child.name.prefix = #prefix;
+
+                          let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                          let mut child = easy_xml::XmlElement::Node(child);
+                          item.serialize(&mut child);
+                          node.borrow_mut().elements.push(child);
+                        }
+                      }
+                    }
+                } else {
+                    quote! {
+                      {
+                        let mut child = easy_xml::XmlNode::empty();
+                        child.name.local_name = #local_name;
+                        child.name.prefix = #prefix;
+
+                        let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                        let mut child = easy_xml::XmlElement::Node(child);
+                        #field_name.serialize(&mut child);
+                        node.borrow_mut().elements.push(child);
+                      }
+                    }
+                }
+            }
+        })
+        .collect();
+    quote! {
+      #code
+    }
+}
+
+pub fn se_build_code_for_fields(fields: &Vec<Field>) -> TokenStream {
+    let code: TokenStream = fields
+        .into_iter()
+        .map(|f| {
+            if f.index >= 0 {
+                return TokenStream::from_str(format!("f_{},", f.index).as_str()).unwrap();
+            } else {
+                let ident = f.field.ident.as_ref().unwrap().to_string();
+                return TokenStream::from_str(
+                    format!("{}:f_{},", ident.as_str(), ident.as_str()).as_str(),
+                )
+                .unwrap();
+            }
+        })
+        .collect();
+    quote! {
+      #code
+    }
+}
+
+pub fn se_build_code_for_set_tag(var_name: &Ident, attrs: &Attributes) -> TokenStream {
+    let var_name = var_name.to_string();
+    let local_name = match &attrs.rename {
+        Some(rename) => quote! {
+          node.borrow_mut().name.local_name = #rename.to_string();
+        },
+        None => quote! {
+          node.borrow_mut().name.local_name = #var_name.to_string();
+        },
+    };
+    let prefix = match &attrs.prefix {
+        Some(prefix) => quote! {
+          node.borrow_mut().name.prefix = Some(#prefix.to_string());
+        },
+        None => quote! {},
+    };
+    quote! {
+      #local_name
+      #prefix
+    }
 }

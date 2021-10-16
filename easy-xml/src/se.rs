@@ -1,6 +1,13 @@
-use xml::{attribute::OwnedAttribute, name::OwnedName, namespace::Namespace};
+use std::{borrow::Cow, cell::RefCell, io::Write, rc::Rc, string::FromUtf8Error};
 
-use crate::{XmlDocument, XmlElement};
+use xml::{
+    attribute::Attribute,
+    name::{Name, OwnedName},
+    writer::XmlEvent,
+    EmitterConfig, EventWriter,
+};
+
+use crate::{XmlDocument, XmlElement, XmlNode, XmlSerialize};
 
 pub struct SerializeSettings {
     pub indent: u32,
@@ -16,164 +23,117 @@ impl Default for SerializeSettings {
     }
 }
 
-struct SerializeContext {
-    xml: String,
-    deep: u32,
-    only_one_child: bool,
-    root: bool,
-    settings: SerializeSettings,
+fn owned_name_to_name(owned_name: &OwnedName) -> Name {
+    Name {
+        local_name: owned_name.local_name.as_str(),
+        namespace: match &owned_name.namespace {
+            Some(namespace) => Some(namespace.as_str()),
+            None => None,
+        },
+        prefix: match &owned_name.prefix {
+            Some(prefix) => Some(prefix.as_str()),
+            None => None,
+        },
+    }
 }
 
-#[inline]
-fn write_indent(ctx: &mut SerializeContext) {
-    if ctx.settings.pretty_format {
-        for _i in 0..(ctx.settings.indent * ctx.deep) {
-            ctx.xml.push_str(" ");
+fn format_xml_element<W: Write>(
+    w: &mut EventWriter<W>,
+    element: &XmlElement,
+) -> xml::writer::Result<()> {
+    match element {
+        XmlElement::Text(text) => {
+            w.write(XmlEvent::characters(text.as_str()))?;
+        }
+        XmlElement::Node(node) => {
+            let node = &*node.borrow_mut();
+            let attributes = &node.attributes;
+            let attributes = attributes
+                .into_iter()
+                .map(|attr| Attribute {
+                    name: owned_name_to_name(&attr.name),
+                    value: attr.value.as_str(),
+                })
+                .collect::<Vec<_>>();
+
+            w.write(XmlEvent::StartElement {
+                name: owned_name_to_name(&node.name),
+                attributes: Cow::Borrowed(attributes.as_slice()),
+                namespace: Cow::Borrowed(&node.namespace),
+            })?;
+
+            let elements = &node.elements;
+            for e in elements {
+                format_xml_element(w, e)?;
+            }
+
+            w.write(XmlEvent::EndElement {
+                name: Some(owned_name_to_name(&node.name)),
+            })?;
+        }
+        XmlElement::Whitespace(_) => {}
+        XmlElement::Comment(comment) => {
+            w.write(XmlEvent::Comment(comment))?;
+        }
+        XmlElement::CData(cdata) => {
+            w.write(XmlEvent::CData(cdata))?;
         }
     }
+    Ok(())
+}
+fn format_xml<W: Write>(w: &mut EventWriter<W>, doc: &XmlDocument) -> xml::writer::Result<()> {
+    w.write(XmlEvent::StartDocument {
+        version: doc.version,
+        encoding: Some(doc.encoding.as_str()),
+        standalone: doc.standalone.clone(),
+    })?;
+
+    for e in &doc.elements {
+        format_xml_element(w, e)?;
+    }
+
+    Ok(())
 }
 
-#[inline]
-fn write_name(ctx: &mut SerializeContext, name: &OwnedName) {
-    if let Some(prefix) = &name.prefix {
-        ctx.xml.push_str(prefix.as_str());
-        ctx.xml.push_str(":");
-    }
-    ctx.xml.push_str(name.local_name.as_str());
+#[derive(Debug)]
+pub enum Error {
+    EmitterError(xml::writer::Error),
+    FromUtf8Error(FromUtf8Error),
 }
 
-fn write_namespace(ctx: &mut SerializeContext, namespace: &Namespace) {
-    if !ctx.root {
-        return;
+pub fn to_string<T: XmlSerialize>(t: &T) -> Result<String, Error> {
+    match to_bytes(t, "UTF-8") {
+        Ok(v8) => match String::from_utf8(v8) {
+            Ok(s) => return Ok(s),
+            Err(e) => return Err(Error::FromUtf8Error(e)),
+        },
+        Err(e) => return Err(Error::EmitterError(e)),
     }
-    for i in namespace {
-        let key = i.0.trim();
-        if key == "" || key == "xml" || key == "xmlns" {
-            continue;
-        }
-        ctx.xml.push_str(" xmlns:");
-        ctx.xml.push_str(i.0);
-        ctx.xml.push_str("=\"");
-        ctx.xml.push_str(i.1);
-        ctx.xml.push_str("\"");
-    }
-    ctx.root = false;
 }
 
-#[inline]
-fn write_attributes(ctx: &mut SerializeContext, attributes: &Vec<OwnedAttribute>) {
-    for attribute in attributes.iter() {
-        ctx.xml.push_str(" ");
-        write_name(ctx, &attribute.name);
-        ctx.xml.push_str("=\"");
-        ctx.xml.push_str(attribute.value.as_str());
-        ctx.xml.push_str("\"");
-    }
+pub fn to_bytes<T: XmlSerialize>(t: &T, encoding: &str) -> xml::writer::Result<Vec<u8>> {
+    let mut v8: Vec<u8> = Vec::new();
+    let mut writer = EmitterConfig::new().create_writer(&mut v8);
+    serialize(t, &mut writer, encoding)?;
+    return Ok(v8);
 }
-#[inline]
-fn write_children(ctx: &mut SerializeContext, elements: &Vec<XmlElement>) {
-    if elements.len() == 0 {
-        return;
+
+fn serialize<T: XmlSerialize, W: Write>(
+    t: &T,
+    writer: &mut EventWriter<W>,
+    encoding: &str,
+) -> xml::writer::Result<()> {
+    let mut doc = XmlDocument {
+        version: xml::common::XmlVersion::Version10,
+        encoding: encoding.to_string(),
+        standalone: None,
+        elements: Vec::new(),
     };
 
-    ctx.only_one_child = elements.len() == 1;
+    let mut root = XmlElement::Node(Rc::new(RefCell::new(XmlNode::empty())));
+    t.serialize(&mut root);
 
-    let only_text_child = ctx.only_one_child && {
-        match &elements.get(0).unwrap() {
-            XmlElement::Text(_) => true,
-            _ => false,
-        }
-    };
+    doc.elements.push(root);
 
-    ctx.deep += 1;
-    for e in elements {
-        e.serialize(ctx);
-    }
-    ctx.deep -= 1;
-
-    if !only_text_child {
-        write_line_break(ctx);
-        write_indent(ctx);
-    }
-}
-#[inline]
-fn write_line_break(ctx: &mut SerializeContext) {
-    if ctx.settings.pretty_format {
-        ctx.xml.push_str("\n");
-    }
-}
-
-impl XmlElement {
-    fn serialize(&self, ctx: &mut SerializeContext) {
-        match self {
-            XmlElement::Text(str) => {
-                if !ctx.only_one_child {
-                    write_line_break(ctx);
-                    write_indent(ctx);
-                }
-                ctx.xml.push_str(str.trim());
-            }
-            XmlElement::Node(node) => {
-                write_line_break(ctx);
-                write_indent(ctx);
-
-                ctx.xml.push_str("<");
-                write_name(ctx, &node.name);
-
-                write_namespace(ctx, &node.namespace);
-
-                write_attributes(ctx, &node.attributes);
-                ctx.xml.push_str(">");
-
-                write_children(ctx, &node.elements);
-
-                ctx.xml.push_str("</");
-                write_name(ctx, &node.name);
-                ctx.xml.push_str(">");
-            }
-            XmlElement::Whitespace(_) => {}
-            XmlElement::Comment(_) => {}
-            XmlElement::CData(_) => {}
-        }
-    }
-}
-
-impl XmlDocument {
-    pub fn serialize(&self) -> String {
-        let settings = SerializeSettings::default();
-        return self.serialize_with_settings(settings);
-    }
-    pub fn serialize_with_settings(&self, settings: SerializeSettings) -> String {
-        let mut ctx = SerializeContext {
-            deep: 0,
-            settings: settings,
-            only_one_child: false,
-            root: true,
-            xml: String::new(),
-        };
-
-        ctx.xml.push_str(
-            format!(
-                "<?xml version=\"{}\" encoding=\"{}\"{}?>",
-                self.version,
-                self.encoding,
-                match self.standalone {
-                    Some(b) => {
-                        if b {
-                            " standalone=\"yes\""
-                        } else {
-                            " standalone=\"no\""
-                        }
-                    }
-                    None => "",
-                }
-            )
-            .as_str(),
-        );
-        for e in &self.elements {
-            ctx.root = true;
-            e.serialize(&mut ctx);
-        }
-        return ctx.xml;
-    }
+    format_xml(writer, &doc)
 }
