@@ -169,6 +169,7 @@ pub struct Attributes {
     pub root: bool,
     pub skip: bool,
     pub to_text: bool,
+    pub container: bool,
 }
 
 impl Attributes {
@@ -182,6 +183,7 @@ impl Attributes {
         let mut root = false;
         let mut skip = false;
         let mut to_text = false;
+        let mut container = false;
         let mut namespace = None;
 
         for attr in attrs.iter().filter(|a| a.path.is_ident("easy_xml")) {
@@ -213,6 +215,9 @@ impl Attributes {
                                 "to_text" => {
                                     to_text = true;
                                 }
+                                "container" => {
+                                    container = true;
+                                }
                                 "prefix" => {
                                     prefix = get_value(&mut attr_iter);
                                 }
@@ -241,6 +246,7 @@ impl Attributes {
             root,
             skip,
             to_text,
+            container,
             namespace: match namespace {
                 Some(map) => map,
                 None => BTreeMap::new(),
@@ -604,18 +610,25 @@ pub fn de_build_code_for_children(fields: &Vec<Field>) -> TokenStream {
             count += 1;
             let owned_name_match = f.de_owned_name_match();
             let var_instance = f.de_get_var_instance();
-
-            let var_instance = match f.attrs.to_text {
-                true => {
+            let var_instance = {
+                if f.attrs.to_text {
                     quote! {
                       let mut text = String::new();
                       node.text(&mut text);
                       let element= easy_xml::XmlElement::Text(text);
                       #var_instance
                     }
+                } else if f.attrs.container {
+                    quote! {
+                      for element in &node.elements {
+                        #var_instance
+                      }
+                    }
+                } else {
+                    quote! {{#var_instance}}
                 }
-                false => quote! {#var_instance},
             };
+
             quote! {
               if #owned_name_match {
                 #var_instance
@@ -866,19 +879,41 @@ pub fn se_build_code_for_node(fields: &Vec<Field>) -> TokenStream {
                 None => quote! {None},
             };
             if f.ty.has_vec() {
-                quote! {
-                  {
-                    for item in &#field_name{
-                      let mut child = easy_xml::XmlNode::empty();
-                      child.name.local_name = #local_name;
-                      child.name.prefix = #prefix;
-
-                      let child = std::rc::Rc::new(std::cell::RefCell::new(child));
-                      let mut child = easy_xml::XmlElement::Node(child);
-                      item.serialize(&mut child);
-                      node.borrow_mut().elements.push(child);
+                if f.attrs.container {
+                    quote! {
+                      {
+                        if #field_name.len() > 0 {
+                          let mut container = easy_xml::XmlNode::empty();
+                          container.name.local_name = #local_name;
+                          container.name.prefix = #prefix;
+                          for item in &#field_name{
+                            let mut child = easy_xml::XmlNode::empty();
+                            let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                            let mut child = easy_xml::XmlElement::Node(child);
+                            item.serialize(&mut child);
+                            container.elements.push(child);
+                          }
+                          let container = std::rc::Rc::new(std::cell::RefCell::new(container));
+                          let mut container = easy_xml::XmlElement::Node(container);
+                          node.borrow_mut().elements.push(container);
+                        }
+                      }
                     }
-                  }
+                } else {
+                    quote! {
+                      {
+                        for item in &#field_name{
+                          let mut child = easy_xml::XmlNode::empty();
+                          child.name.local_name = #local_name;
+                          child.name.prefix = #prefix;
+
+                          let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                          let mut child = easy_xml::XmlElement::Node(child);
+                          item.serialize(&mut child);
+                          node.borrow_mut().elements.push(child);
+                        }
+                      }
+                    }
                 }
             } else {
                 if f.ty.has_option() {
@@ -886,13 +921,13 @@ pub fn se_build_code_for_node(fields: &Vec<Field>) -> TokenStream {
                       {
                         if let Some(item) = &#field_name {
                           let mut child = easy_xml::XmlNode::empty();
-                        child.name.local_name = #local_name;
-                        child.name.prefix = #prefix;
+                          child.name.local_name = #local_name;
+                          child.name.prefix = #prefix;
 
-                        let child = std::rc::Rc::new(std::cell::RefCell::new(child));
-                        let mut child = easy_xml::XmlElement::Node(child);
-                        item.serialize(&mut child);
-                        node.borrow_mut().elements.push(child);
+                          let child = std::rc::Rc::new(std::cell::RefCell::new(child));
+                          let mut child = easy_xml::XmlElement::Node(child);
+                          item.serialize(&mut child);
+                          node.borrow_mut().elements.push(child);
                         }
                       }
                     }
