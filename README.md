@@ -53,8 +53,8 @@
 
 依赖：
 ```
-easy-xml = "0.1.3"
-easy-xml-derive = "0.1.3"
+easy-xml = "0.1.4"
+easy-xml-derive = "0.1.4"
 ```
 
 使用：
