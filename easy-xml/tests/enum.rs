@@ -129,3 +129,46 @@ fn test_for_node() {
 
     assert_eq!(node, de::from_str::<Node>(xml.as_str()).unwrap());
 }
+
+#[test]
+fn test_enum_with_rename() {
+    #[derive(PartialEq, Debug, XmlDeserialize, XmlSerialize)]
+    enum Type {
+        #[easy_xml(rename = "TTT1")]
+        T1,
+        #[easy_xml(rename = "TTT2")]
+        T2,
+        #[easy_xml(rename = "TTT3")]
+        T3,
+    }
+
+    #[derive(PartialEq, Debug, XmlDeserialize, XmlSerialize)]
+    enum Obj {
+        #[easy_xml(rename = "TextObject")]
+        Text,
+        #[easy_xml(rename = "ImgObject")]
+        Img,
+        #[easy_xml(rename = "VideoObject")]
+        Video,
+    }
+    #[derive(PartialEq, Debug, XmlDeserialize, XmlSerialize)]
+    struct Node {
+        #[easy_xml(rename = "Type", to_text)]
+        ty: Type,
+        #[easy_xml(rename = "TextObject|ImgObject|VideoObject")]
+        objs: Vec<Obj>,
+    }
+
+    let node = Node {
+        ty: Type::T2,
+        objs: vec![Obj::Text, Obj::Img, Obj::Video],
+    };
+    let xml = se::to_string(&node).unwrap();
+
+    assert_eq!(
+        xml.as_str(),
+        r#"<?xml version="1.0" encoding="UTF-8"?><Node><Type>TTT2</Type><TextObject /><ImgObject /><VideoObject /></Node>"#
+    );
+
+    assert_eq!(node, de::from_str::<Node>(xml.as_str()).unwrap());
+}
