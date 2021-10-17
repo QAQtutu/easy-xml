@@ -54,16 +54,10 @@ fn get_from_text(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
             let ident = &v.ident;
             let attrs = Attributes::new(&v.attrs);
 
-            let mut tag = String::new();
-            if let Some(prefix) = attrs.prefix {
-                tag += prefix.as_str();
-                tag += ":";
-            }
-            if let Some(rename) = attrs.rename {
-                tag += rename.as_str();
-            } else {
-                tag += ident.to_string().as_str();
-            }
+            let tag = match &attrs.rename {
+                Some(rename) => rename.clone(),
+                None => ident.to_string(),
+            };
 
             quote! {
               #tag => Ok(#enum_name::#ident),

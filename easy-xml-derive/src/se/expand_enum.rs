@@ -52,6 +52,11 @@ fn build_code_for_text(enum_name: &Ident, data: &syn::DataEnum) -> TokenStream {
         .map(|v| {
             let var_name = &v.ident;
             let var_name_str = var_name.to_string();
+            let attrs = Attributes::new(&v.attrs);
+            let var_name_str = match &attrs.rename {
+                Some(rename) => rename.clone(),
+                None => var_name_str,
+            };
             return match &v.fields {
                 syn::Fields::Named(named) => {
                     let vars: TokenStream = (&named.named)

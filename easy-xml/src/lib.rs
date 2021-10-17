@@ -97,7 +97,7 @@ where
     {
         match T::deserialize(element) {
             Ok(obj) => Ok(Some(obj)),
-            Err(e) => Err(e),
+            Err(_e) => Ok(None),
         }
     }
 }
